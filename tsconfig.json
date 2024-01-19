@@ -8,6 +8,7 @@
     "isolatedModules": true,
     "baseUrl": ".",
     "paths": {
+      "mangopeach-core/*": ["packages/mangopeach-core/*"],
       "mangopeach-server/*": ["packages/mangopeach-server/*"],
     },
   },

@@ -1,0 +1,11 @@
+{
+  "name": "mangopeach-core",
+  "version": "0.1.0",
+  "main": "src/index.ts",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^20",
+    "eslint": "^8"
+  }
+}
