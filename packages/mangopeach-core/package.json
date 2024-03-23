@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "main": "src/index.ts",
   "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "start": "yarn tsc && node ./dist/index.js",
+  },
   "devDependencies": {
     "typescript": "^5",
     "@types/node": "^20",
