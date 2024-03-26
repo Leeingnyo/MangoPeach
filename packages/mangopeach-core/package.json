@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "yarn tsc && node ./dist/index.js",
+    "test": "yarn jest"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",

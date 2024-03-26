@@ -8,6 +8,7 @@
   "workspaces": ["packages/*"],
   "scripts": {
     "core:start": "cd packages/mangopeach-core && yarn start",
+    "core:test": "cd packages/mangopeach-core && yarn test",
     "server:dev": "cd packages/mangopeach-server && yarn dev",
     "server:build": "cd packages/mangopeach-server && yarn build",
     "server:start": "cd packages/mangopeach-server && yarn start"
