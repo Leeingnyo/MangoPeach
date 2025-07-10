@@ -22,6 +22,7 @@ describe('ServerConfigService (Integration Test)', () => {
 
   it('should save and load config correctly', async () => {
     const config: ServerConfig = {
+      dataStoragePath: '.',
       libraries: [
         {
           id: 'lib1',
@@ -51,7 +52,7 @@ describe('ServerConfigService (Integration Test)', () => {
   });
 
   it('should handle empty config correctly', async () => {
-    const config: ServerConfig = { libraries: [] };
+    const config: ServerConfig = { dataStoragePath: '.', libraries: [] };
     await service.saveConfig(config);
     const loadedConfig = await service.loadConfig();
     expect(loadedConfig).toEqual(config);
