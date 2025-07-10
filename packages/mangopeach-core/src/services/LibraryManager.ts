@@ -8,6 +8,7 @@ import { LocalFileSystemProvider } from '../providers/LocalFileSystemProvider';
 import { IArchiveProvider } from '../providers/IArchiveProvider';
 import { ZipArchiveProvider } from '../providers/ZipArchiveProvider';
 import { ImageBundleSummary } from '../models/ImageBundleSummary';
+import * as cron from 'node-cron';
 
 export class LibraryManager {
   private configService: ServerConfigService;
@@ -18,6 +19,7 @@ export class LibraryManager {
     currentData: ImageBundleGroup | null;
   }> = new Map();
   private recentlyDeleted: Map<string, ImageBundleSummary[]> = new Map();
+  private scheduledJobs: Map<string, cron.ScheduledTask> = new Map();
 
   constructor(configService: ServerConfigService) {
     this.configService = configService;
@@ -67,6 +69,7 @@ export class LibraryManager {
       });
       console.log(`Library ${libConfig.name} initialized.`);
     }
+    this.scheduleScans();
   }
 
   public getLibraryData(libraryId: string): ImageBundleGroup | null {
@@ -167,5 +170,34 @@ export class LibraryManager {
     return bundles;
   }
 
-  // TODO: Add methods for periodic scan, etc.
+  public scheduleScans(): void {
+    console.log('Scheduling periodic scans for libraries...');
+    this.shutdown(); // Clear any existing jobs before scheduling new ones
+
+    for (const [libraryId, library] of this.libraries.entries()) {
+      const { config } = library;
+      if (config.enabled && config.scanInterval && cron.validate(config.scanInterval)) {
+        const job = cron.schedule(config.scanInterval, async () => {
+          console.log(`Running scheduled scan for library: ${config.name}`);
+          try {
+            await this.rescanAndCompare(libraryId);
+          } catch (error) {
+            console.error(`Error during scheduled scan for ${config.name}:`, error);
+          }
+        });
+        this.scheduledJobs.set(libraryId, job);
+        console.log(`Scheduled scan for "${config.name}" with interval "${config.scanInterval}"`);
+      } else if (config.enabled && config.scanInterval) {
+        console.warn(`Invalid cron expression "${config.scanInterval}" for library "${config.name}". Scan will not be scheduled.`);
+      }
+    }
+  }
+
+  public shutdown(): void {
+    for (const [, job] of this.scheduledJobs.entries()) {
+      job.stop();
+    }
+    this.scheduledJobs.clear();
+    console.log('All scheduled scan jobs stopped.');
+  }
 }

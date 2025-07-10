@@ -7,11 +7,15 @@ import { Library } from '../models/Library';
 import { ImageBundleGroup } from '../models/ImageBundleGroup';
 import { ServerConfig } from '../models/ServerConfig';
 import { ImageBundleSummary } from '../models/ImageBundleSummary';
+import * as cron from 'node-cron';
 
 // Mocking the dependencies
 jest.mock('./ServerConfigService');
 jest.mock('./ScannerService');
 jest.mock('./ScanDataStore');
+jest.mock('node-cron');
+
+const MockedCron = cron as jest.Mocked<typeof cron>;
 
 const MockedServerConfigService = ServerConfigService as jest.MockedClass<typeof ServerConfigService>;
 const MockedScannerService = ScannerService as jest.MockedClass<typeof ScannerService>;
@@ -154,6 +158,68 @@ describe('LibraryManager', () => {
       expect(result.moved[0].from).toBe(bundle1);
       expect(result.moved[0].to).toBe(movedBundle);
       expect(result.added).toHaveLength(0);
+    });
+  });
+
+  describe('scheduleScans', () => {
+    beforeEach(() => {
+      // Ensure cron validation returns true for valid expressions in these tests
+      MockedCron.validate.mockReturnValue(true);
+    });
+
+    it('should schedule scans for enabled libraries with valid intervals', async () => {
+      // Arrange
+      const enabledLib: Library = { ...testLib, enabled: true, scanInterval: '* * * * *' };
+      mockConfigService.loadConfig.mockResolvedValue({ ...serverConfig, libraries: [enabledLib] });
+
+      // Act
+      await libraryManager.initialize();
+
+      // Assert
+      expect(cron.schedule).toHaveBeenCalledTimes(1);
+      expect(cron.schedule).toHaveBeenCalledWith(enabledLib.scanInterval, expect.any(Function));
+    });
+
+    it('should not schedule scans for disabled libraries', async () => {
+      // Arrange
+      const disabledLib: Library = { ...testLib, enabled: false, scanInterval: '* * * * *' };
+      mockConfigService.loadConfig.mockResolvedValue({ ...serverConfig, libraries: [disabledLib] });
+
+      // Act
+      await libraryManager.initialize();
+
+      // Assert
+      expect(cron.schedule).not.toHaveBeenCalled();
+    });
+
+    it('should not schedule scans for libraries with invalid intervals', async () => {
+      // Arrange
+      const invalidIntervalLib: Library = { ...testLib, enabled: true, scanInterval: 'invalid-interval' };
+      mockConfigService.loadConfig.mockResolvedValue({ ...serverConfig, libraries: [invalidIntervalLib] });
+      MockedCron.validate.mockReturnValue(false); // Mock invalid cron expression
+
+      // Act
+      await libraryManager.initialize();
+
+      // Assert
+      expect(cron.schedule).not.toHaveBeenCalled();
+    });
+
+    it('shutdown should stop all scheduled jobs', async () => {
+      // Arrange
+      const mockJob = { stop: jest.fn() } as any;
+      (cron.schedule as jest.Mock).mockReturnValue(mockJob);
+      const lib1: Library = { ...testLib, id: 'lib1', enabled: true, scanInterval: '* * * * *' };
+      const lib2: Library = { ...testLib, id: 'lib2', enabled: true, scanInterval: '* * * * *' };
+      mockConfigService.loadConfig.mockResolvedValue({ ...serverConfig, libraries: [lib1, lib2] });
+      await libraryManager.initialize();
+      expect(cron.schedule).toHaveBeenCalledTimes(2);
+
+      // Act
+      libraryManager.shutdown();
+
+      // Assert
+      expect(mockJob.stop).toHaveBeenCalledTimes(2);
     });
   });
 });
