@@ -1,7 +1,7 @@
 import * as path from 'path';
 import { ScannerService } from './ScannerService';
 import { MockFileSystemProvider } from '../providers/MockFileSystemProvider';
-import { ImageBundle } from '../models/ImageBundle';
+import { ImageBundleSummary } from '../models/ImageBundleSummary';
 import { ImageBundleGroup } from '../models/ImageBundleGroup';
 import { ZipArchiveProvider } from '../providers/ZipArchiveProvider';
 import * as fs from 'fs';
@@ -25,7 +25,7 @@ describe('ScannerService with MockFileSystemProvider', () => {
     expect(rootGroup.subGroups).toHaveLength(0);
     expect(rootGroup.bundles).toHaveLength(1);
 
-    const bundleA = rootGroup.bundles[0] as ImageBundle;
+    const bundleA = rootGroup.bundles[0] as ImageBundleSummary;
     expect(bundleA.name).toBe('a');
   });
 
@@ -41,7 +41,7 @@ describe('ScannerService with MockFileSystemProvider', () => {
 
     // Mock the parseArchive function since it's not implemented yet
     jest.spyOn(scanner, 'parseArchive').mockImplementation(async (p) => {
-      return new ImageBundle(p, 'zip', path.basename(p), p, '/library', 10, new Date());
+      return new ImageBundleSummary(p, 'zip', path.basename(p), p, '/library', 10, new Date());
     });
 
     const rootGroup = await scanner.parseLibrary('/library');

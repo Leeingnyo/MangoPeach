@@ -1,11 +1,11 @@
-import { ImageBundle } from './ImageBundle';
+import { ImageBundleSummary } from './ImageBundleSummary';
 
 export class ImageBundleGroup {
   id: string;
   name: string;
   path: string;
   libraryId: string;
-  bundles: ImageBundle[];
+  bundles: ImageBundleSummary[];
   subGroups: ImageBundleGroup[];
 
   constructor(

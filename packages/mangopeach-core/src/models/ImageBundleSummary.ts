@@ -1,6 +1,6 @@
 import { Tag } from './Tag';
 
-export class ImageBundle {
+export class ImageBundleSummary {
   id: string;
   type: 'zip' | 'rar' | '7z' | 'directory';
   name: string;

@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { ImageBundle } from '../models/ImageBundle';
+import { ImageBundleSummary } from '../models/ImageBundleSummary';
 import { ImageBundleGroup } from '../models/ImageBundleGroup';
 import { IFileSystemProvider } from '../providers/IFileSystemProvider';
 import { IArchiveProvider } from '../providers/IArchiveProvider';
@@ -21,14 +21,14 @@ export class ScannerService {
 
     const items = await this.parsePath(libraryPath, libraryId);
 
-    rootGroup.bundles = items.filter((item): item is ImageBundle => item instanceof ImageBundle);
+    rootGroup.bundles = items.filter((item): item is ImageBundleSummary => item instanceof ImageBundleSummary);
     rootGroup.subGroups = items.filter((item): item is ImageBundleGroup => item instanceof ImageBundleGroup);
 
     return rootGroup;
   }
 
-  private async parsePath(dirPath: string, libraryId: string): Promise<(ImageBundle | ImageBundleGroup)[]> {
-    const results: (ImageBundle | ImageBundleGroup)[] = [];
+  private async parsePath(dirPath: string, libraryId: string): Promise<(ImageBundleSummary | ImageBundleGroup)[]> {
+    const results: (ImageBundleSummary | ImageBundleGroup)[] = [];
 
     let entries;
     try {
@@ -48,7 +48,7 @@ export class ScannerService {
           const stats = await this.fsProvider.stat(entryPath);
           const dirEntries = await this.fsProvider.readdir(entryPath);
           const imageFiles = dirEntries.filter(e => e.isFile() && isImageFile(e.name));
-          const bundle = new ImageBundle(
+          const bundle = new ImageBundleSummary(
             entryPath,
             'directory',
             entry.name,
@@ -62,7 +62,7 @@ export class ScannerService {
 
         if (subItems.length > 0) {
           const group = new ImageBundleGroup(entryPath, entry.name, entryPath, libraryId);
-          group.bundles = subItems.filter((item): item is ImageBundle => item instanceof ImageBundle);
+          group.bundles = subItems.filter((item): item is ImageBundleSummary => item instanceof ImageBundleSummary);
           group.subGroups = subItems.filter((item): item is ImageBundleGroup => item instanceof ImageBundleGroup);
           results.push(group);
         }
@@ -85,7 +85,7 @@ export class ScannerService {
     }
   }
 
-  public async parseArchive(archivePath: string, libraryId: string): Promise<ImageBundle> {
+  public async parseArchive(archivePath: string, libraryId: string): Promise<ImageBundleSummary> {
     const provider = this.archiveProviders.find(p => p.supports(archivePath));
     if (!provider) {
       throw new Error(`Unsupported archive type: ${archivePath}`);
@@ -95,7 +95,7 @@ export class ScannerService {
     const imageEntries = entries.filter(e => !e.isDirectory && isImageFile(e.name));
     const stats = await this.fsProvider.stat(archivePath);
 
-    return new ImageBundle(
+    return new ImageBundleSummary(
       archivePath,
       provider.getType(),
       path.basename(archivePath),

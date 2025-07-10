@@ -1,7 +1,7 @@
 import * as path from 'path';
 import { ScannerService } from '../../src/services/ScannerService';
 import { LocalFileSystemProvider } from '../../src/providers/LocalFileSystemProvider';
-import { ImageBundle } from '../../src/models/ImageBundle';
+import { ImageBundleSummary } from '../../src/models/ImageBundleSummary';
 import { ImageBundleGroup } from '../../src/models/ImageBundleGroup';
 import { ZipArchiveProvider } from '../../src/providers/ZipArchiveProvider';
 
@@ -20,7 +20,7 @@ describe('ScannerService with LocalFileSystemProvider', () => {
 
     // Check for bundle 'a'
     const bundleA = rootGroup.bundles.find(b => b.name === 'a');
-    expect(bundleA).toBeInstanceOf(ImageBundle);
+    expect(bundleA).toBeInstanceOf(ImageBundleSummary);
     expect(bundleA?.pageCount).toBe(11);
     expect(bundleA?.libraryId).toBe(FIXTURE_PATH);
 
@@ -33,13 +33,14 @@ describe('ScannerService with LocalFileSystemProvider', () => {
 
     // Check for bundle 'b' inside group 'a'
     const bundleB = groupA?.bundles.find(b => b.name === 'b');
+    expect(bundleB).toBeInstanceOf(ImageBundleSummary);
     expect(bundleB?.name).toBe('b');
     expect(bundleB?.pageCount).toBe(2);
     expect(bundleB?.libraryId).toBe(FIXTURE_PATH);
 
     // Check for bundle 'c.zip' inside group 'a'
     const bundleC = groupA?.bundles.find(b => b.name === 'c.zip');
-    expect(bundleC).toBeInstanceOf(ImageBundle);
+    expect(bundleC).toBeInstanceOf(ImageBundleSummary);
     expect(bundleC?.type).toBe('zip');
     // This will fail until you create the actual zip file with 3 images.
     expect(bundleC?.pageCount).toBe(3);
