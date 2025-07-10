@@ -7,6 +7,8 @@ import { ZipArchiveProvider } from '../providers/ZipArchiveProvider';
 import * as fs from 'fs';
 import { Readable } from 'stream';
 
+jest.mock('fs');
+
 describe('ScannerService with MockFileSystemProvider', () => {
   it('should correctly parse a simple directory that is an ImageBundle', async () => {
     const fixture = {
@@ -15,7 +17,7 @@ describe('ScannerService with MockFileSystemProvider', () => {
     };
 
     const mockProvider = new MockFileSystemProvider(fixture);
-    const scanner = new ScannerService(mockProvider);
+    const scanner = new ScannerService(mockProvider, []);
 
     const rootGroup = await scanner.parseLibrary('/library');
 
@@ -35,7 +37,7 @@ describe('ScannerService with MockFileSystemProvider', () => {
     };
 
     const mockProvider = new MockFileSystemProvider(fixture);
-    const scanner = new ScannerService(mockProvider);
+    const scanner = new ScannerService(mockProvider, []);
 
     // Mock the parseArchive function since it's not implemented yet
     jest.spyOn(scanner, 'parseArchive').mockImplementation(async (p) => {
@@ -60,7 +62,7 @@ describe('ScannerService with MockFileSystemProvider', () => {
     };
 
     const mockProvider = new MockFileSystemProvider(fixture);
-    const scanner = new ScannerService(mockProvider);
+    const scanner = new ScannerService(mockProvider, []);
 
     const rootGroup = await scanner.parseLibrary('/library');
 
@@ -80,8 +82,7 @@ describe('ScannerService with MockFileSystemProvider', () => {
     // Since ZipArchiveProvider uses fs.createReadStream, we mock it to avoid real file access.
     const mockStream = new Readable();
     mockStream._read = () => {};
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    jest.spyOn(fs, 'createReadStream').mockReturnValue(mockStream as any);
+    (fs.createReadStream as jest.Mock).mockReturnValue(mockStream);
 
     // Mock the getEntries method to return a predefined list of files.
     jest.spyOn(zipProvider, 'getEntries').mockResolvedValue([
