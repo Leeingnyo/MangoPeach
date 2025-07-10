@@ -16,6 +16,7 @@ export class LocalFileSystemProvider implements IFileSystemProvider {
   public async stat(filePath: string): Promise<FileSystemStat> {
     const stats = await fs.stat(filePath);
     return {
+      fileId: stats.ino.toString(),
       modifiedAt: stats.mtime,
       createdAt: stats.ctime,
       size: stats.size,

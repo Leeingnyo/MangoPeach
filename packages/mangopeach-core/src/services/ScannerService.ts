@@ -57,7 +57,8 @@ export class ScannerService {
             entryPath,
             libraryId,
             imageFiles.length,
-            stats.modifiedAt
+            stats.modifiedAt,
+            stats.fileId
           );
           results.push(bundle);
         }
@@ -103,7 +104,8 @@ export class ScannerService {
       archivePath,
       libraryId,
       imageEntries.length,
-      stats.modifiedAt
+      stats.modifiedAt,
+      stats.fileId
     );
   }
 

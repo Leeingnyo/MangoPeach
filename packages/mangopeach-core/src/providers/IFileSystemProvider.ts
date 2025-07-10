@@ -6,6 +6,7 @@ export interface FileSystemEntry {
 }
 
 export interface FileSystemStat {
+  fileId?: string;
   modifiedAt: Date;
   createdAt: Date;
   size: number;

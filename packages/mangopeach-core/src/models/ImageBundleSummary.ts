@@ -14,6 +14,7 @@ export class ImageBundleSummary {
   createdAt: Date;
   modifiedAt: Date;
   scannedAt: Date;
+  fileId?: string;
 
   constructor(
     id: string,
@@ -23,6 +24,7 @@ export class ImageBundleSummary {
     libraryId: string,
     pageCount: number,
     modifiedAt: Date,
+    fileId?: string,
   ) {
     this.id = id;
     this.type = type;
@@ -31,6 +33,7 @@ export class ImageBundleSummary {
     this.libraryId = libraryId;
     this.pageCount = pageCount;
     this.modifiedAt = modifiedAt;
+    this.fileId = fileId;
 
     // Default values
     this.displayName = name;
