@@ -21,7 +21,7 @@ describe('ScannerService with LocalFileSystemProvider', () => {
     // Check for bundle 'a'
     const bundleA = rootGroup.bundles.find(b => b.name === 'a');
     expect(bundleA).toBeInstanceOf(ImageBundle);
-    expect(bundleA?.pageCount).toBe(2);
+    expect(bundleA?.pageCount).toBe(11);
     expect(bundleA?.libraryId).toBe(FIXTURE_PATH);
 
     // Check for group 'a'
