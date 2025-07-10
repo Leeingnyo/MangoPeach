@@ -3,6 +3,7 @@ import { ScannerService } from '../../src/services/ScannerService';
 import { LocalFileSystemProvider } from '../../src/providers/LocalFileSystemProvider';
 import { ImageBundleSummary } from '../../src/models/ImageBundleSummary';
 import { ImageBundleGroup } from '../../src/models/ImageBundleGroup';
+import { ImageBundleDetails } from '../../src/models/ImageBundleDetails';
 import { ZipArchiveProvider } from '../../src/providers/ZipArchiveProvider';
 
 describe('ScannerService with LocalFileSystemProvider', () => {
@@ -44,6 +45,16 @@ describe('ScannerService with LocalFileSystemProvider', () => {
     expect(bundleC?.type).toBe('zip');
     // This will fail until you create the actual zip file with 3 images.
     expect(bundleC?.pageCount).toBe(3);
+
+    // Test getBundleDetails for c.zip
+    const cZipDetails = await scanner.getBundleDetails(bundleC!.id, bundleC!.type as 'zip');
+    expect(cZipDetails).toBeInstanceOf(ImageBundleDetails);
+    expect(cZipDetails.id).toBe(bundleC!.id);
+    expect(cZipDetails.pages).toEqual([
+      path.join(bundleC!.id, 'I001.webp'),
+      path.join(bundleC!.id, 'I002.webp'),
+      path.join(bundleC!.id, 'I003.webp'),
+    ]);
     expect(bundleB?.libraryId).toBe(FIXTURE_PATH);
   });
 });

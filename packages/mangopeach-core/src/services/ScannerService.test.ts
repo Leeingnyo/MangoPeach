@@ -4,6 +4,7 @@ import { MockFileSystemProvider } from '../providers/MockFileSystemProvider';
 import { ImageBundleSummary } from '../models/ImageBundleSummary';
 import { ImageBundleGroup } from '../models/ImageBundleGroup';
 import { ZipArchiveProvider } from '../providers/ZipArchiveProvider';
+import { ImageBundleDetails } from '../models/ImageBundleDetails';
 import * as fs from 'fs';
 import { Readable } from 'stream';
 
@@ -99,5 +100,50 @@ describe('ScannerService with MockFileSystemProvider', () => {
     expect(bundle.name).toBe('a.zip');
     expect(bundle.pageCount).toBe(2);
     expect(bundle.type).toBe('zip');
+  });
+
+  it('should retrieve bundle details for a directory bundle', async () => {
+    const fixture = {
+      '/library/a': ['1.jpg', '10.jpg', '2.jpg', 'info.txt'],
+    };
+    const mockProvider = new MockFileSystemProvider(fixture);
+    const scanner = new ScannerService(mockProvider, []);
+
+    const details = await scanner.getBundleDetails('/library/a', 'directory');
+
+    expect(details).toBeInstanceOf(ImageBundleDetails);
+    expect(details.id).toBe('/library/a');
+    expect(details.pages).toEqual([
+      '/library/a/1.jpg',
+      '/library/a/2.jpg',
+      '/library/a/10.jpg',
+    ]);
+  });
+
+  it('should retrieve bundle details for an archive bundle', async () => {
+    const fixture = {
+      '/library/b.zip': [], // Content mocked by ZipArchiveProvider
+    };
+    const mockProvider = new MockFileSystemProvider(fixture);
+    const zipProvider = new ZipArchiveProvider();
+
+    jest.spyOn(zipProvider, 'getEntries').mockResolvedValue([
+      { name: 'page1.png', path: 'page1.png', isDirectory: false },
+      { name: 'page10.png', path: 'page10.png', isDirectory: false },
+      { name: 'page2.png', path: 'page2.png', isDirectory: false },
+      { name: 'info.txt', path: 'info.txt', isDirectory: false },
+    ]);
+
+    const scanner = new ScannerService(mockProvider, [zipProvider]);
+
+    const details = await scanner.getBundleDetails('/library/b.zip', 'zip');
+
+    expect(details).toBeInstanceOf(ImageBundleDetails);
+    expect(details.id).toBe('/library/b.zip');
+    expect(details.pages).toEqual([
+      path.join('/library/b.zip', 'page1.png'),
+      path.join('/library/b.zip', 'page2.png'),
+      path.join('/library/b.zip', 'page10.png'),
+    ]);
   });
 });

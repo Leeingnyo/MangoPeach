@@ -1,9 +1,11 @@
 import * as path from 'path';
 import { ImageBundleSummary } from '../models/ImageBundleSummary';
+import { ImageBundleDetails } from '../models/ImageBundleDetails';
 import { ImageBundleGroup } from '../models/ImageBundleGroup';
 import { IFileSystemProvider } from '../providers/IFileSystemProvider';
 import { IArchiveProvider } from '../providers/IArchiveProvider';
 import { isImageFile, isArchiveFile } from '../utils/file-types';
+import { naturalSort } from '../utils/natural-sort';
 
 export class ScannerService {
   private fsProvider: IFileSystemProvider;
@@ -67,7 +69,6 @@ export class ScannerService {
           results.push(group);
         }
       } else if (entry.isFile() && isArchiveFile(entry.name)) {
-        // This is where parseArchive would be called
         const bundle = await this.parseArchive(entryPath, libraryId);
         results.push(bundle);
       }
@@ -104,5 +105,29 @@ export class ScannerService {
       imageEntries.length,
       stats.modifiedAt
     );
+  }
+
+  /**
+   * Retrieves the detailed information (page list) for a specific ImageBundleSummary.
+   * @param bundleId The ID of the ImageBundleSummary (which is its path).
+   * @param type The type of the bundle ('directory' or archive type).
+   * @returns An ImageBundleDetails object.
+   */
+  public async getBundleDetails(bundleId: string, type: 'directory' | 'zip' | 'rar' | '7z'): Promise<ImageBundleDetails> {
+    let pages: string[] = [];
+
+    if (type === 'directory') {
+      const entries = await this.fsProvider.readdir(bundleId);
+      pages = entries.filter(e => e.isFile() && isImageFile(e.name)).map(e => e.path);
+    } else {
+      const provider = this.archiveProviders.find(p => p.getType() === type);
+      if (!provider) {
+        throw new Error(`No archive provider found for type: ${type}`);
+      }
+      const entries = await provider.getEntries(bundleId);
+      pages = entries.filter(e => !e.isDirectory && isImageFile(e.name)).map(e => path.join(bundleId, e.name));
+    }
+
+    return new ImageBundleDetails(bundleId, naturalSort(pages));
   }
 }
