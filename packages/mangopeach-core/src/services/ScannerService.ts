@@ -2,12 +2,16 @@ import * as path from 'path';
 import { ImageBundle } from '../models/ImageBundle';
 import { ImageBundleGroup } from '../models/ImageBundleGroup';
 import { IFileSystemProvider } from '../providers/IFileSystemProvider';
+import { IArchiveProvider } from '../providers/IArchiveProvider';
+import { isImageFile, isArchiveFile } from '../utils/file-types';
 
 export class ScannerService {
   private fsProvider: IFileSystemProvider;
+  private archiveProviders: IArchiveProvider[];
 
-  constructor(fsProvider: IFileSystemProvider) {
+  constructor(fsProvider: IFileSystemProvider, archiveProviders: IArchiveProvider[]) {
     this.fsProvider = fsProvider;
+    this.archiveProviders = archiveProviders;
   }
 
   public async parseLibrary(libraryPath: string): Promise<ImageBundleGroup> {
@@ -43,7 +47,7 @@ export class ScannerService {
         if (await this.isImageBundle(entryPath)) {
           const stats = await this.fsProvider.stat(entryPath);
           const dirEntries = await this.fsProvider.readdir(entryPath);
-          const imageFiles = dirEntries.filter(e => e.isFile() && this.isImageFile(e.name));
+          const imageFiles = dirEntries.filter(e => e.isFile() && isImageFile(e.name));
           const bundle = new ImageBundle(
             entryPath,
             'directory',
@@ -62,7 +66,7 @@ export class ScannerService {
           group.subGroups = subItems.filter((item): item is ImageBundleGroup => item instanceof ImageBundleGroup);
           results.push(group);
         }
-      } else if (entry.isFile() && this.isArchiveFile(entry.name)) {
+      } else if (entry.isFile() && isArchiveFile(entry.name)) {
         // This is where parseArchive would be called
         const bundle = await this.parseArchive(entryPath, libraryId);
         results.push(bundle);
@@ -74,26 +78,31 @@ export class ScannerService {
   private async isImageBundle(dirPath: string): Promise<boolean> {
     try {
       const entries = await this.fsProvider.readdir(dirPath);
-      return entries.some(entry => entry.isFile() && this.isImageFile(entry.name));
+      return entries.some(entry => entry.isFile() && isImageFile(entry.name));
     } catch (error) {
       console.error(`Error reading directory ${dirPath}:`, error);
       return false;
     }
   }
 
-  private isImageFile(fileName: string): boolean {
-    const SUPPORTED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
-    const lowercasedName = fileName.toLowerCase();
-    return SUPPORTED_IMAGE_EXTENSIONS.some(ext => lowercasedName.endsWith(ext));
-  }
-
-  private isArchiveFile(fileName: string): boolean {
-    const SUPPORTED_ARCHIVE_EXTENSIONS = ['.zip', '.cbz', '.rar', '.cbr'];
-    const lowercasedName = fileName.toLowerCase();
-    return SUPPORTED_ARCHIVE_EXTENSIONS.some(ext => lowercasedName.endsWith(ext));
-  }
-
   public async parseArchive(archivePath: string, libraryId: string): Promise<ImageBundle> {
-    throw new Error('Method not implemented.');
+    const provider = this.archiveProviders.find(p => p.supports(archivePath));
+    if (!provider) {
+      throw new Error(`Unsupported archive type: ${archivePath}`);
+    }
+
+    const entries = await provider.getEntries(archivePath);
+    const imageEntries = entries.filter(e => !e.isDirectory && isImageFile(e.name));
+    const stats = await this.fsProvider.stat(archivePath);
+
+    return new ImageBundle(
+      archivePath,
+      provider.getType(),
+      path.basename(archivePath),
+      archivePath,
+      libraryId,
+      imageEntries.length,
+      stats.modifiedAt
+    );
   }
 }

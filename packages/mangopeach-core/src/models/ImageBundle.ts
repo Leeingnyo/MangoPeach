@@ -2,7 +2,7 @@ import { Tag } from './Tag';
 
 export class ImageBundle {
   id: string;
-  type: 'zip' | 'rar' | 'directory';
+  type: 'zip' | 'rar' | '7z' | 'directory';
   name: string;
   path: string;
   libraryId: string;
@@ -17,7 +17,7 @@ export class ImageBundle {
 
   constructor(
     id: string,
-    type: 'zip' | 'rar' | 'directory',
+    type: 'zip' | 'rar' | '7z' | 'directory',
     name: string,
     path: string,
     libraryId: string,

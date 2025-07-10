@@ -3,6 +3,9 @@ import { ScannerService } from './ScannerService';
 import { MockFileSystemProvider } from '../providers/MockFileSystemProvider';
 import { ImageBundle } from '../models/ImageBundle';
 import { ImageBundleGroup } from '../models/ImageBundleGroup';
+import { ZipArchiveProvider } from '../providers/ZipArchiveProvider';
+import * as fs from 'fs';
+import { Readable } from 'stream';
 
 describe('ScannerService with MockFileSystemProvider', () => {
   it('should correctly parse a simple directory that is an ImageBundle', async () => {
@@ -65,5 +68,35 @@ describe('ScannerService with MockFileSystemProvider', () => {
     expect(rootGroup.subGroups).toHaveLength(0); // Empty groups should not be included
   });
 
-  it.todo('should handle archive files');
+  it('should parse an archive file as a bundle', async () => {
+    const fixture = {
+      '/library': ['a.zip'],
+    };
+    const mockProvider = new MockFileSystemProvider(fixture);
+
+    // We need a real ZipArchiveProvider to test the interaction.
+    const zipProvider = new ZipArchiveProvider();
+
+    // Since ZipArchiveProvider uses fs.createReadStream, we mock it to avoid real file access.
+    const mockStream = new Readable();
+    mockStream._read = () => {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    jest.spyOn(fs, 'createReadStream').mockReturnValue(mockStream as any);
+
+    // Mock the getEntries method to return a predefined list of files.
+    jest.spyOn(zipProvider, 'getEntries').mockResolvedValue([
+      { name: '1.jpg', path: '1.jpg', isDirectory: false },
+      { name: '2.png', path: '2.png', isDirectory: false },
+    ]);
+
+    const scanner = new ScannerService(mockProvider, [zipProvider]);
+    const rootGroup = await scanner.parseLibrary('/library');
+
+    expect(rootGroup.subGroups).toHaveLength(0);
+    expect(rootGroup.bundles).toHaveLength(1);
+    const bundle = rootGroup.bundles[0];
+    expect(bundle.name).toBe('a.zip');
+    expect(bundle.pageCount).toBe(2);
+    expect(bundle.type).toBe('zip');
+  });
 });
