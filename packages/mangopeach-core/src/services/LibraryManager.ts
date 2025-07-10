@@ -11,7 +11,7 @@ import { ImageBundleSummary } from '../models/ImageBundleSummary';
 
 export class LibraryManager {
   private configService: ServerConfigService;
-  private libraries: Map<string, { 
+  private libraries: Map<string, {
     config: Library;
     scanner: ScannerService;
     dataStore: ScanDataStore;
@@ -81,5 +81,91 @@ export class LibraryManager {
     return this.recentlyDeleted.get(libraryId) || [];
   }
 
-  // TODO: Add methods for incremental scan, periodic scan, etc.
+  public async rescanAndCompare(libraryId: string) {
+    const library = this.libraries.get(libraryId);
+    if (!library) {
+      throw new Error(`Library with ID ${libraryId} not found.`);
+    }
+
+    console.log(`Rescanning library: ${library.config.name}...`);
+
+    const oldData = library.currentData;
+    const newData = await library.scanner.parseLibrary(library.config.path);
+
+    if (!oldData) {
+      console.log('No previous data, treating all items as new.');
+      library.currentData = newData;
+      await library.dataStore.save(newData);
+      return { added: this.flattenBundles(newData), updated: [], moved: [], deleted: [] };
+    }
+
+    const oldBundles = this.flattenBundles(oldData);
+    const newBundles = this.flattenBundles(newData);
+
+    const oldBundlesByPath = new Map(oldBundles.map(b => [b.path, b]));
+    const newBundlesByPath = new Map(newBundles.map(b => [b.path, b]));
+
+    // Filter out bundles without a fileId for the next step
+    const oldBundlesByFileId = new Map(oldBundles.filter(b => b.fileId).map(b => [b.fileId!, b]));
+    const newBundlesByFileId = new Map(newBundles.filter(b => b.fileId).map(b => [b.fileId!, b]));
+
+    const added: ImageBundleSummary[] = [];
+    const updated: ImageBundleSummary[] = [];
+    const moved: { from: ImageBundleSummary; to: ImageBundleSummary }[] = [];
+
+    // 1. Find updated and unchanged files by path
+    for (const newBundle of newBundles) {
+      if (oldBundlesByPath.has(newBundle.path)) {
+        const oldBundle = oldBundlesByPath.get(newBundle.path)!;
+        if (oldBundle.modifiedAt.getTime() !== newBundle.modifiedAt.getTime()) {
+          updated.push(newBundle);
+        }
+        // Remove matched items so they aren't considered for moves/adds/deletes
+        oldBundlesByPath.delete(oldBundle.path);
+        newBundlesByPath.delete(newBundle.path);
+        if(oldBundle.fileId) oldBundlesByFileId.delete(oldBundle.fileId);
+        if(newBundle.fileId) newBundlesByFileId.delete(newBundle.fileId);
+      }
+    }
+
+    // 2. Find moved files by fileId
+    for (const newBundle of Array.from(newBundlesByPath.values())) {
+      if (newBundle.fileId && oldBundlesByFileId.has(newBundle.fileId)) {
+        const oldBundle = oldBundlesByFileId.get(newBundle.fileId)!;
+        moved.push({ from: oldBundle, to: newBundle });
+
+        oldBundlesByPath.delete(oldBundle.path);
+        newBundlesByPath.delete(newBundle.path);
+        oldBundlesByFileId.delete(oldBundle.fileId as string);
+        newBundlesByFileId.delete(newBundle.fileId);
+      }
+    }
+
+    // 3. Remaining items are added or deleted
+    const deleted = Array.from(oldBundlesByPath.values());
+    added.push(...Array.from(newBundlesByPath.values()));
+
+    // 4. Update state
+    library.currentData = newData;
+    await library.dataStore.save(newData);
+    this.recentlyDeleted.set(libraryId, deleted);
+
+    console.log(`Scan complete for ${library.config.name}:`);
+    console.log(`  - Added: ${added.length}`);
+    console.log(`  - Updated: ${updated.length}`);
+    console.log(`  - Moved: ${moved.length}`);
+    console.log(`  - Deleted: ${deleted.length}`);
+
+    return { added, updated, moved, deleted };
+  }
+
+  private flattenBundles(group: ImageBundleGroup): ImageBundleSummary[] {
+    let bundles = [...group.bundles];
+    for (const subGroup of group.subGroups) {
+      bundles = bundles.concat(this.flattenBundles(subGroup));
+    }
+    return bundles;
+  }
+
+  // TODO: Add methods for periodic scan, etc.
 }
