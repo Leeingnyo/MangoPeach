@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "yarn tsc && node ./dist/index.js",
-    "test": "yarn jest",
+    "test": "yarn jest --silent",
     "lint": "eslint . --ext .ts"
   },
   "devDependencies": {
