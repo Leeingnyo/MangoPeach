@@ -7,6 +7,7 @@ import { IFileSystemProvider } from '../providers/IFileSystemProvider';
 import { LocalFileSystemProvider } from '../providers/LocalFileSystemProvider';
 import { IArchiveProvider } from '../providers/IArchiveProvider';
 import { ZipArchiveProvider } from '../providers/ZipArchiveProvider';
+import { ImageBundleSummary } from '../models/ImageBundleSummary';
 
 export class LibraryManager {
   private configService: ServerConfigService;
@@ -16,6 +17,7 @@ export class LibraryManager {
     dataStore: ScanDataStore;
     currentData: ImageBundleGroup | null;
   }> = new Map();
+  private recentlyDeleted: Map<string, ImageBundleSummary[]> = new Map();
 
   constructor(configService: ServerConfigService) {
     this.configService = configService;
@@ -73,6 +75,10 @@ export class LibraryManager {
 
   public getAllLibraryConfigs(): Library[] {
     return Array.from(this.libraries.values()).map(lib => lib.config);
+  }
+
+  public getRecentlyDeleted(libraryId: string): ImageBundleSummary[] {
+    return this.recentlyDeleted.get(libraryId) || [];
   }
 
   // TODO: Add methods for incremental scan, periodic scan, etc.
