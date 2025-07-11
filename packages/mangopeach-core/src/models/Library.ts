@@ -7,4 +7,6 @@ export interface Library {
   type: LibraryType;
   enabled: boolean;
   scanInterval?: string; // Crontab-like string, e.g., '0 * * * *' for every hour
+  createdAt: Date;
+  updatedAt: Date;
 }

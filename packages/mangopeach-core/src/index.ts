@@ -1,4 +1,5 @@
 import { LibraryManager } from './services/LibraryManager';
+import { ILibraryStore } from './services/data-store/ILibraryStore';
 import { ServerConfigService } from './services/ServerConfigService';
 
 /**
@@ -13,11 +14,11 @@ export function createConfigService(dataPath?: string): ServerConfigService {
 
 /**
  * Creates an instance of LibraryManager.
- * @param configService An instance of ServerConfigService.
+ * @param dataStore An instance of ILibraryStore.
  * @returns A new instance of LibraryManager.
  */
-export function createLibraryManager(configService: ServerConfigService): LibraryManager {
-  return new LibraryManager(configService);
+export function createLibraryManager(dataStore: ILibraryStore): LibraryManager {
+  return new LibraryManager(dataStore);
 }
 
 // Also export the types for convenience

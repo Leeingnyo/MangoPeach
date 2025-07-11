@@ -1,43 +1,42 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { LibraryManager } from './LibraryManager';
-import { ServerConfigService } from './ServerConfigService';
 import { ScannerService } from './ScannerService';
-import { ScanDataStore } from './ScanDataStore';
 import { Library } from '../models/Library';
 import { ImageBundleGroup } from '../models/ImageBundleGroup';
-import { ServerConfig } from '../models/ServerConfig';
 import { ImageBundleSummary } from '../models/ImageBundleSummary';
 import * as cron from 'node-cron';
+import { ILibraryStore } from './data-store/ILibraryStore';
 
 // Mocking the dependencies
-jest.mock('./ServerConfigService');
 jest.mock('./ScannerService');
-jest.mock('./ScanDataStore');
 jest.mock('node-cron');
 
 const MockedCron = cron as jest.Mocked<typeof cron>;
-
-const MockedServerConfigService = ServerConfigService as jest.MockedClass<typeof ServerConfigService>;
 const MockedScannerService = ScannerService as jest.MockedClass<typeof ScannerService>;
-const MockedScanDataStore = ScanDataStore as jest.MockedClass<typeof ScanDataStore>;
+
+// Create a mock for the data store
+const mockDataStore: jest.Mocked<ILibraryStore> = {
+  getAllLibraries: jest.fn(),
+  getLibrary: jest.fn(),
+  createLibrary: jest.fn(),
+  updateLibrary: jest.fn(),
+  deleteLibrary: jest.fn(),
+  getLibraryData: jest.fn(),
+  saveLibraryData: jest.fn(),
+};
 
 describe('LibraryManager', () => {
   let libraryManager: LibraryManager;
-  let mockConfigService: jest.Mocked<ServerConfigService>;
   let mockScannerService: jest.Mocked<ScannerService>;
-  let mockScanDataStore: jest.Mocked<ScanDataStore>;
 
   const testLib: Library = {
     id: 'test-lib-1',
     name: 'Test Library',
     path: '/test/library',
     type: 'local',
+    enabled: true,
     scanInterval: '0 * * * *',
-  };
-
-  const serverConfig: ServerConfig = {
-    libraries: [testLib],
-    dataStoragePath: '/test/data',
+    createdAt: new Date(),
+    updatedAt: new Date(),
   };
 
   beforeEach(() => {
@@ -45,22 +44,21 @@ describe('LibraryManager', () => {
     jest.clearAllMocks();
 
     // Setup mock instances
-    mockConfigService = new MockedServerConfigService('') as jest.Mocked<ServerConfigService>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockScannerService = new MockedScannerService({} as any, []) as jest.Mocked<ScannerService>;
-    mockScanDataStore = new MockedScanDataStore('', '') as jest.Mocked<ScanDataStore>;
 
-    // Mock the constructor of ScannerService and ScanDataStore to return our mock instances
+    // Mock the constructor of ScannerService to return our mock instance
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (ScannerService as any).mockImplementation(() => mockScannerService);
-    (ScanDataStore as any).mockImplementation(() => mockScanDataStore);
 
-    libraryManager = new LibraryManager(mockConfigService);
+    libraryManager = new LibraryManager(mockDataStore);
   });
 
   describe('initialize', () => {
     it('should perform an initial scan if no data exists', async () => {
       // Arrange
-      mockConfigService.loadConfig.mockResolvedValue(serverConfig);
-      mockScanDataStore.load.mockResolvedValue(null); // No existing data
+      mockDataStore.getAllLibraries.mockResolvedValue([testLib]);
+      mockDataStore.getLibraryData.mockResolvedValue(null); // No existing data
       const initialScanResult = new ImageBundleGroup(testLib.id, testLib.name, testLib.path, testLib.id);
       mockScannerService.parseLibrary.mockResolvedValue(initialScanResult);
 
@@ -68,27 +66,29 @@ describe('LibraryManager', () => {
       await libraryManager.initialize();
 
       // Assert
-      expect(mockConfigService.loadConfig).toHaveBeenCalledTimes(1);
-      expect(mockScanDataStore.load).toHaveBeenCalledTimes(1);
+      expect(mockDataStore.getAllLibraries).toHaveBeenCalledTimes(1);
+      expect(mockDataStore.getLibraryData).toHaveBeenCalledWith(testLib.id);
       expect(mockScannerService.parseLibrary).toHaveBeenCalledWith(testLib.path);
-      expect(mockScanDataStore.save).toHaveBeenCalledWith(initialScanResult);
-      expect(libraryManager.getLibraryData(testLib.id)).toBe(initialScanResult);
+      expect(mockDataStore.saveLibraryData).toHaveBeenCalledWith(testLib.id, initialScanResult);
+      const data = await libraryManager.getLibraryData(testLib.id);
+      expect(data).toBe(initialScanResult);
     });
 
     it('should load existing data if found', async () => {
         // Arrange
         const existingData = new ImageBundleGroup(testLib.id, 'existing', testLib.path, testLib.id);
-        mockConfigService.loadConfig.mockResolvedValue(serverConfig);
-        mockScanDataStore.load.mockResolvedValue(existingData);
+        mockDataStore.getAllLibraries.mockResolvedValue([testLib]);
+        mockDataStore.getLibraryData.mockResolvedValue(existingData);
   
         // Act
         await libraryManager.initialize();
   
         // Assert
-        expect(mockScanDataStore.load).toHaveBeenCalledTimes(1);
+        expect(mockDataStore.getLibraryData).toHaveBeenCalledWith(testLib.id);
         expect(mockScannerService.parseLibrary).not.toHaveBeenCalled();
-        expect(mockScanDataStore.save).not.toHaveBeenCalled();
-        expect(libraryManager.getLibraryData(testLib.id)).toBe(existingData);
+        expect(mockDataStore.saveLibraryData).not.toHaveBeenCalled();
+        const data = await libraryManager.getLibraryData(testLib.id);
+        expect(data).toBe(existingData);
       });
   });
 
@@ -103,8 +103,8 @@ describe('LibraryManager', () => {
       oldData = new ImageBundleGroup(testLib.id, 'old', testLib.path, testLib.id);
       oldData.bundles.push(bundle1, bundle2);
 
-      mockConfigService.loadConfig.mockResolvedValue(serverConfig);
-      mockScanDataStore.load.mockResolvedValue(oldData);
+      mockDataStore.getAllLibraries.mockResolvedValue([testLib]);
+      mockDataStore.getLibraryData.mockResolvedValue(oldData);
       await libraryManager.initialize();
     });
 
@@ -170,7 +170,7 @@ describe('LibraryManager', () => {
     it('should schedule scans for enabled libraries with valid intervals', async () => {
       // Arrange
       const enabledLib: Library = { ...testLib, enabled: true, scanInterval: '* * * * *' };
-      mockConfigService.loadConfig.mockResolvedValue({ ...serverConfig, libraries: [enabledLib] });
+      mockDataStore.getAllLibraries.mockResolvedValue([enabledLib]);
 
       // Act
       await libraryManager.initialize();
@@ -183,7 +183,7 @@ describe('LibraryManager', () => {
     it('should not schedule scans for disabled libraries', async () => {
       // Arrange
       const disabledLib: Library = { ...testLib, enabled: false, scanInterval: '* * * * *' };
-      mockConfigService.loadConfig.mockResolvedValue({ ...serverConfig, libraries: [disabledLib] });
+      mockDataStore.getAllLibraries.mockResolvedValue([disabledLib]);
 
       // Act
       await libraryManager.initialize();
@@ -195,7 +195,7 @@ describe('LibraryManager', () => {
     it('should not schedule scans for libraries with invalid intervals', async () => {
       // Arrange
       const invalidIntervalLib: Library = { ...testLib, enabled: true, scanInterval: 'invalid-interval' };
-      mockConfigService.loadConfig.mockResolvedValue({ ...serverConfig, libraries: [invalidIntervalLib] });
+      mockDataStore.getAllLibraries.mockResolvedValue([invalidIntervalLib]);
       MockedCron.validate.mockReturnValue(false); // Mock invalid cron expression
 
       // Act
@@ -207,11 +207,11 @@ describe('LibraryManager', () => {
 
     it('shutdown should stop all scheduled jobs', async () => {
       // Arrange
-      const mockJob = { stop: jest.fn() } as any;
+      const mockJob = { stop: jest.fn() } as unknown as jest.Mocked<cron.ScheduledTask>;
       (cron.schedule as jest.Mock).mockReturnValue(mockJob);
       const lib1: Library = { ...testLib, id: 'lib1', enabled: true, scanInterval: '* * * * *' };
       const lib2: Library = { ...testLib, id: 'lib2', enabled: true, scanInterval: '* * * * *' };
-      mockConfigService.loadConfig.mockResolvedValue({ ...serverConfig, libraries: [lib1, lib2] });
+      mockDataStore.getAllLibraries.mockResolvedValue([lib1, lib2]);
       await libraryManager.initialize();
       expect(cron.schedule).toHaveBeenCalledTimes(2);
 

@@ -29,13 +29,19 @@ describe('ServerConfigService (Integration Test)', () => {
           name: 'My Comics',
           path: '/path/to/comics',
           type: 'local',
+          enabled: true,
           scanInterval: '0 * * * *',
+          createdAt: new Date(),
+          updatedAt: new Date(),
         },
         {
           id: 'lib2',
           name: 'My Photos',
           path: '/path/to/photos',
           type: 'smb',
+          enabled: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
         },
       ],
     };
@@ -43,7 +49,17 @@ describe('ServerConfigService (Integration Test)', () => {
     await service.saveConfig(config);
     const loadedConfig = await service.loadConfig();
 
-    expect(loadedConfig).toEqual(config);
+    // Since dates are serialized as strings in JSON, we need to create expected config with string dates
+    const expectedConfig = {
+      ...config,
+      libraries: config.libraries.map(lib => ({
+        ...lib,
+        createdAt: lib.createdAt.toISOString(),
+        updatedAt: lib.updatedAt.toISOString(),
+      }))
+    };
+
+    expect(loadedConfig).toEqual(expectedConfig);
   });
 
   it('should return null if config file does not exist', async () => {

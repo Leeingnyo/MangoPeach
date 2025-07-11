@@ -1,11 +1,13 @@
 import { cache } from 'react';
 import { createLibraryManager, createConfigService, LibraryManager, ServerConfigService } from 'mangopeach-core';
+import { MemoryDataStore } from 'mangopeach-core/src/services/data-store/MemoryDataStore';
 
 // Define a type for our global singleton container
 declare global {
   // eslint-disable-next-line no-var
   var __mangopeach_container: {
     configService: ServerConfigService;
+    dataStore: MemoryDataStore;
     libraryManager: LibraryManager;
     initializationPromise?: Promise<void>;
   };
@@ -19,7 +21,8 @@ function initializeSingleton() {
   console.log('Initializing singleton container for MangoPeach Core...');
 
   const configService = createConfigService();
-  const libraryManager = createLibraryManager(configService);
+  const dataStore = new MemoryDataStore();
+  const libraryManager = createLibraryManager(dataStore);
 
   const initializeCore = async () => {
     console.log('Initializing MangoPeach Core...');
@@ -29,6 +32,7 @@ function initializeSingleton() {
 
   globalThis.__mangopeach_container = {
     configService,
+    dataStore,
     libraryManager,
     initializationPromise: initializeCore(),
   };
@@ -50,3 +54,4 @@ export const getInitializedLibraryManager = cache(async () => {
 // but prefer using the cached getter in components.
 export const libraryManager = globalThis.__mangopeach_container.libraryManager;
 export const configService = globalThis.__mangopeach_container.configService;
+export const dataStore = globalThis.__mangopeach_container.dataStore;

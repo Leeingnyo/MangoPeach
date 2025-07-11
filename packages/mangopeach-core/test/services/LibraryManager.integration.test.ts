@@ -1,101 +1,90 @@
-import * as fs from 'fs/promises';
 import * as path from 'path';
 import { LibraryManager } from '../../src/services/LibraryManager';
-import { ServerConfigService } from '../../src/services/ServerConfigService';
-import { ServerConfig } from '../../src/models/ServerConfig';
 import { Library } from '../../src/models/Library';
-import { ScanDataStore } from '../../src/services/ScanDataStore';
-import { ScannerService } from '../../src/services/ScannerService';
-import { LocalFileSystemProvider } from '../../src/providers/LocalFileSystemProvider';
-import { ZipArchiveProvider } from '../../src/providers/ZipArchiveProvider';
+import { MemoryDataStore } from '../../src/services/data-store/MemoryDataStore';
+import { ILibraryStore } from '../../src/services/data-store/ILibraryStore';
 
-describe('LibraryManager (Integration Test)', () => {
-  const TEST_CONFIG_DIR = path.join(__dirname, '../temp_library_manager_config');
-  const TEST_DATA_DIR = path.join(__dirname, '../temp_library_manager_data');
-  const TEST_CONFIG_FILE = 'test-config.json';
-
-  let configService: ServerConfigService;
+describe('LibraryManager (Integration Test with MemoryDataStore)', () => {
   let libraryManager: LibraryManager;
+  let dataStore: ILibraryStore;
 
   beforeEach(async () => {
-    // Clean up directories before each test
-    await fs.rm(TEST_CONFIG_DIR, { recursive: true, force: true });
-    await fs.rm(TEST_DATA_DIR, { recursive: true, force: true });
-    await fs.mkdir(TEST_CONFIG_DIR, { recursive: true });
-
-    configService = new ServerConfigService(TEST_CONFIG_DIR, TEST_CONFIG_FILE);
-    libraryManager = new LibraryManager(configService);
+    // Use MemoryDataStore for integration tests
+    dataStore = new MemoryDataStore();
+    libraryManager = new LibraryManager(dataStore);
   });
 
-  afterEach(async () => {
-    // Clean up directories after each test
-    await fs.rm(TEST_CONFIG_DIR, { recursive: true, force: true });
-    await fs.rm(TEST_DATA_DIR, { recursive: true, force: true });
-  });
-
-  it('should initialize with no libraries if config is empty', async () => {
-    await configService.saveConfig({ libraries: [], dataStoragePath: TEST_DATA_DIR });
+  it('should initialize with no libraries if data store is empty', async () => {
     await libraryManager.initialize();
-    expect(libraryManager.getAllLibraryConfigs()).toHaveLength(0);
+    const configs = await libraryManager.getAllLibraryConfigs();
+    expect(configs).toHaveLength(0);
   });
 
-  it('should initialize and scan a new local library', async () => {
+  it('should initialize and perform an initial scan for a new library', async () => {
     const libraryPath = path.join(__dirname, '../fixtures/simple-library');
-    const libConfig: Library = {
-      id: 'test-lib-1',
+    const libConfig: Omit<Library, 'id' | 'createdAt' | 'updatedAt'> = {
       name: 'Test Library 1',
       path: libraryPath,
       type: 'local',
+      enabled: true,
+      scanInterval: undefined,
     };
-    const config: ServerConfig = { libraries: [libConfig], dataStoragePath: TEST_DATA_DIR };
-    await configService.saveConfig(config);
+    
+    // Pre-seed the data store with a library configuration
+    const createdLib = await dataStore.createLibrary(libConfig);
 
     await libraryManager.initialize();
 
-    const loadedLibConfig = libraryManager.getAllLibraryConfigs();
-    expect(loadedLibConfig).toHaveLength(1);
-    expect(loadedLibConfig[0].id).toBe('test-lib-1');
+    const loadedLibConfigs = await libraryManager.getAllLibraryConfigs();
+    expect(loadedLibConfigs).toHaveLength(1);
+    expect(loadedLibConfigs[0].id).toBe(createdLib.id);
 
-    const libraryData = libraryManager.getLibraryData('test-lib-1');
+    const libraryData = await libraryManager.getLibraryData(createdLib.id);
     expect(libraryData).toBeDefined();
     expect(libraryData?.name).toBe('simple-library');
     expect(libraryData?.bundles).toHaveLength(1);
     expect(libraryData?.subGroups).toHaveLength(1);
 
-    // Verify data is saved
-    const dataStore = new ScanDataStore(TEST_DATA_DIR, 'test-lib-1', 'scan-data.json');
-    const savedData = await dataStore.load();
+    // Verify data is saved in the data store
+    const savedData = await dataStore.getLibraryData(createdLib.id);
     expect(savedData).toBeDefined();
     expect(savedData?.name).toBe('simple-library');
   });
 
-  it('should load existing scan data for a library', async () => {
+  it('should load existing scan data for a library from the data store', async () => {
     const libraryPath = path.join(__dirname, '../fixtures/simple-library');
-    const libConfig: Library = {
-      id: 'test-lib-2',
+    const libConfig: Omit<Library, 'id' | 'createdAt' | 'updatedAt'> = {
       name: 'Test Library 2',
       path: libraryPath,
       type: 'local',
+      enabled: true,
+      scanInterval: undefined,
     };
-    const config: ServerConfig = { libraries: [libConfig], dataStoragePath: TEST_DATA_DIR };
-    await configService.saveConfig(config);
+    const createdLib = await dataStore.createLibrary(libConfig);
 
-    // Manually create and save initial scan data
+    // Manually create and save initial scan data to the data store
+    const { ScannerService } = await import('../../src/services/ScannerService');
+    const { LocalFileSystemProvider } = await import('../../src/providers/LocalFileSystemProvider');
+    const { ZipArchiveProvider } = await import('../../src/providers/ZipArchiveProvider');
     const initialScanner = new ScannerService(new LocalFileSystemProvider(), [new ZipArchiveProvider()]);
     const initialData = await initialScanner.parseLibrary(libraryPath);
-    const initialDataStore = new ScanDataStore(TEST_DATA_DIR, 'test-lib-2', 'scan-data.json');
-    await initialDataStore.save(initialData);
+    await dataStore.saveLibraryData(createdLib.id, initialData);
+
+    // Spy on the scanner to ensure it's not called during initialization
+    const scannerSpy = jest.spyOn(ScannerService.prototype, 'parseLibrary');
 
     // Initialize LibraryManager, which should load the existing data
     await libraryManager.initialize();
 
-    const loadedLibConfig = libraryManager.getAllLibraryConfigs();
-    expect(loadedLibConfig).toHaveLength(1);
+    const loadedLibConfigs = await libraryManager.getAllLibraryConfigs();
+    expect(loadedLibConfigs).toHaveLength(1);
+    expect(scannerSpy).not.toHaveBeenCalled(); // Crucial check
 
-    const libraryData = libraryManager.getLibraryData('test-lib-2');
+    const libraryData = await libraryManager.getLibraryData(createdLib.id);
     expect(libraryData).toBeDefined();
     expect(libraryData?.name).toBe('simple-library');
-    // Ensure it's the loaded data, not a fresh scan
-    // (This is hard to test without mocking fs.readdir, but we'll assume it loads if save/load works)
+    expect(libraryData).toEqual(initialData);
+
+    scannerSpy.mockRestore();
   });
 });

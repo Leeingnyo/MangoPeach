@@ -1,6 +1,5 @@
+import { ILibraryStore } from './data-store/ILibraryStore';
 import { ScannerService } from './ScannerService';
-import { ScanDataStore } from './ScanDataStore';
-import { ServerConfigService } from './ServerConfigService';
 import { ImageBundleGroup } from '../models/ImageBundleGroup';
 import { Library } from '../models/Library';
 import { IFileSystemProvider } from '../providers/IFileSystemProvider';
@@ -11,28 +10,27 @@ import { ImageBundleSummary } from '../models/ImageBundleSummary';
 import * as cron from 'node-cron';
 
 export class LibraryManager {
-  private configService: ServerConfigService;
+  private dataStore: ILibraryStore;
   private libraries: Map<string, {
     config: Library;
     scanner: ScannerService;
-    dataStore: ScanDataStore;
     currentData: ImageBundleGroup | null;
   }> = new Map();
   private recentlyDeleted: Map<string, ImageBundleSummary[]> = new Map();
   private scheduledJobs: Map<string, cron.ScheduledTask> = new Map();
 
-  constructor(configService: ServerConfigService) {
-    this.configService = configService;
+  constructor(dataStore: ILibraryStore) {
+    this.dataStore = dataStore;
   }
 
   public async initialize(): Promise<void> {
-    const config = await this.configService.loadConfig();
-    if (!config || config.libraries.length === 0) {
-      console.log('No libraries configured. Please add libraries to config.json.');
+    const libraries = await this.dataStore.getAllLibraries();
+    if (libraries.length === 0) {
+      console.log('No libraries configured in the data store.');
       return;
     }
 
-    for (const libConfig of config.libraries) {
+    for (const libConfig of libraries) {
       // Determine FileSystemProvider based on library type
       let fsProvider: IFileSystemProvider;
       switch (libConfig.type) {
@@ -50,21 +48,19 @@ export class LibraryManager {
       // TODO: Add other archive providers like RarArchiveProvider
 
       const scanner = new ScannerService(fsProvider, archiveProviders);
-      const dataStore = new ScanDataStore(config.dataStoragePath, libConfig.id, 'scan-data.json');
 
       // Try to load existing scan data for this library
-      let currentData = await dataStore.load();
+      let currentData = await this.dataStore.getLibraryData(libConfig.id);
 
       if (!currentData) {
         console.log(`No scan data found for ${libConfig.name}. Performing initial full scan...`);
         currentData = await scanner.parseLibrary(libConfig.path);
-        await dataStore.save(currentData);
+        await this.dataStore.saveLibraryData(libConfig.id, currentData);
       }
 
       this.libraries.set(libConfig.id, {
         config: libConfig,
         scanner,
-        dataStore,
         currentData,
       });
       console.log(`Library ${libConfig.name} initialized.`);
@@ -72,12 +68,16 @@ export class LibraryManager {
     this.scheduleScans();
   }
 
-  public getLibraryData(libraryId: string): ImageBundleGroup | null {
-    return this.libraries.get(libraryId)?.currentData || null;
+  public async getLibraryData(libraryId: string): Promise<ImageBundleGroup | null> {
+    const library = this.libraries.get(libraryId);
+    if (library) {
+        return library.currentData;
+    }
+    return await this.dataStore.getLibraryData(libraryId);
   }
 
-  public getAllLibraryConfigs(): Library[] {
-    return Array.from(this.libraries.values()).map(lib => lib.config);
+  public async getAllLibraryConfigs(): Promise<Library[]> {
+    return await this.dataStore.getAllLibraries();
   }
 
   public getRecentlyDeleted(libraryId: string): ImageBundleSummary[] {
@@ -98,7 +98,7 @@ export class LibraryManager {
     if (!oldData) {
       console.log('No previous data, treating all items as new.');
       library.currentData = newData;
-      await library.dataStore.save(newData);
+      await this.dataStore.saveLibraryData(libraryId, newData);
       return { added: this.flattenBundles(newData), updated: [], moved: [], deleted: [] };
     }
 
@@ -137,6 +137,7 @@ export class LibraryManager {
         const oldBundle = oldBundlesByFileId.get(newBundle.fileId)!;
         moved.push({ from: oldBundle, to: newBundle });
 
+        // Remove matched items so they aren't considered for moves/adds/deletes
         oldBundlesByPath.delete(oldBundle.path);
         newBundlesByPath.delete(newBundle.path);
         oldBundlesByFileId.delete(oldBundle.fileId as string);
@@ -150,7 +151,7 @@ export class LibraryManager {
 
     // 4. Update state
     library.currentData = newData;
-    await library.dataStore.save(newData);
+    await this.dataStore.saveLibraryData(libraryId, newData);
     this.recentlyDeleted.set(libraryId, deleted);
 
     console.log(`Scan complete for ${library.config.name}:`);
@@ -174,7 +175,7 @@ export class LibraryManager {
     console.log('Scheduling periodic scans for libraries...');
     this.shutdown(); // Clear any existing jobs before scheduling new ones
 
-    for (const [libraryId, library] of this.libraries.entries()) {
+    for (const [libraryId, library] of Array.from(this.libraries.entries())) {
       const { config } = library;
       if (config.enabled && config.scanInterval && cron.validate(config.scanInterval)) {
         const job = cron.schedule(config.scanInterval, async () => {
@@ -194,7 +195,7 @@ export class LibraryManager {
   }
 
   public shutdown(): void {
-    for (const [, job] of this.scheduledJobs.entries()) {
+    for (const [, job] of Array.from(this.scheduledJobs.entries())) {
       job.stop();
     }
     this.scheduledJobs.clear();
