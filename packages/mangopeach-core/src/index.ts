@@ -1,24 +1,25 @@
 import { LibraryManager } from './services/LibraryManager';
 import { ServerConfigService } from './services/ServerConfigService';
 
-// Define a default data path. This could be overridden by environment variables in a real app.
-const dataPath = process.env.MANGOPEACH_DATA_PATH || './data';
-
-console.log(`Using data path: ${dataPath}`);
-
-// Create singleton instances of the services.
-const configService = new ServerConfigService(dataPath);
-const libraryManager = new LibraryManager(configService);
+/**
+ * Creates an instance of ServerConfigService.
+ * @param dataPath The path to the data directory. If not provided, it will be read from the environment variable or a default will be used.
+ * @returns A new instance of ServerConfigService.
+ */
+export function createConfigService(dataPath?: string): ServerConfigService {
+  const path = dataPath || process.env.MANGOPEACH_DATA_PATH || './data';
+  return new ServerConfigService(path);
+}
 
 /**
- * Initializes the core services.
- * This must be called once when the application starts.
+ * Creates an instance of LibraryManager.
+ * @param configService An instance of ServerConfigService.
+ * @returns A new instance of LibraryManager.
  */
-export const initializeCore = async () => {
-  console.log('Initializing MangoPeach Core...');
-  await libraryManager.initialize();
-  console.log('MangoPeach Core initialized successfully.');
-};
+export function createLibraryManager(configService: ServerConfigService): LibraryManager {
+  return new LibraryManager(configService);
+}
 
-// Export the singleton instances for use in other parts of the application.
-export { libraryManager, configService };
+// Also export the types for convenience
+export type { LibraryManager } from './services/LibraryManager';
+export type { ServerConfigService } from './services/ServerConfigService';
