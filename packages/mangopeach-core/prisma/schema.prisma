@@ -1,0 +1,64 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Library {
+  id            String   @id @default(cuid())
+  name          String
+  path          String   @unique
+  type          String   // "local", "smb", etc.
+  enabled       Boolean  @default(true)
+  scanInterval  String?  // Crontab-like string
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relation to root-level groups
+  groups        ImageBundleGroup[]
+}
+
+model ImageBundleGroup {
+  id        String   @id @default(cuid())
+  name      String
+  path      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  library   Library @relation(fields: [libraryId], references: [id])
+  libraryId String
+
+  // Self-relation for nested groups
+  parent    ImageBundleGroup?  @relation("SubGroups", fields: [parentId], references: [id])
+  parentId  String?
+  subGroups ImageBundleGroup[] @relation("SubGroups")
+
+  // Relation to bundles
+  bundles   ImageBundle[]
+}
+
+model ImageBundle {
+  id           String   @id @default(cuid())
+  type         String   // "zip", "directory", etc.
+  name         String
+  path         String   @unique
+  fileId       String?  // inode or cloud file id
+  pageCount    Int
+  modifiedAt   DateTime
+  scannedAt    DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // User-editable fields
+  displayName  String?
+  sortingName  String?
+
+  group     ImageBundleGroup @relation(fields: [groupId], references: [id])
+  groupId   String
+}

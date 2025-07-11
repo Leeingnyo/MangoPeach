@@ -7,7 +7,10 @@
   "scripts": {
     "start": "yarn tsc && node ./dist/index.js",
     "test": "yarn jest --silent",
-    "lint": "eslint . --ext .ts"
+    "lint": "eslint . --ext .ts",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "postinstall": "prisma generate"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",
