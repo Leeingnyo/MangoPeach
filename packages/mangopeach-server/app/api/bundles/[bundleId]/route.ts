@@ -86,11 +86,10 @@ export async function GET(
           modifiedAt: bundle.modifiedAt,
           libraryId: bundle.libraryId,
           fileId: bundle.fileId,
-          images: bundleDetails.images.map((img: any, index: number) => ({
+          pages: bundleDetails.pages.map((pagePath: string, index: number) => ({
             index,
-            path: img.path,
-            name: img.name,
-            size: img.size
+            path: pagePath,
+            name: pagePath.split('/').pop() || pagePath
           }))
         }
       });

@@ -47,9 +47,9 @@ describe('ScannerService with LocalFileSystemProvider', () => {
     expect(bundleC?.pageCount).toBe(3);
 
     // Test getBundleDetails for c.zip
-    const cZipDetails = await scanner.getBundleDetails(bundleC!.id, bundleC!.type as 'zip');
+    const cZipDetails = await scanner.getBundleDetails(bundleC!.path, bundleC!.type as 'zip');
     expect(cZipDetails).toBeInstanceOf(ImageBundleDetails);
-    expect(cZipDetails.id).toBe(bundleC!.id);
+    expect(cZipDetails.id).toBe(bundleC!.path);
     expect(cZipDetails.pages).toEqual([
       'I001.webp',
       'I002.webp',
@@ -72,13 +72,13 @@ describe('ScannerService with LocalFileSystemProvider', () => {
     }
 
     // Test getImageData by index
-    const imageData = await scanner.getImageData(bundleC.id, bundleC.type as 'zip', 0);
+    const imageData = await scanner.getImageData(bundleC.path, bundleC.type as 'zip', 0);
     expect(imageData).toBeInstanceOf(Buffer);
     // Note: fixture files are empty, so we just check that we get a Buffer
     expect(imageData.length).toBeGreaterThanOrEqual(0);
 
     // Test getImageDataByPath
-    const imageDataByPath = await scanner.getImageDataByPath(bundleC.id, bundleC.type as 'zip', 'I001.webp');
+    const imageDataByPath = await scanner.getImageDataByPath(bundleC.path, bundleC.type as 'zip', 'I001.webp');
     expect(imageDataByPath).toBeInstanceOf(Buffer);
     expect(imageDataByPath.length).toBeGreaterThanOrEqual(0);
   });
@@ -97,15 +97,15 @@ describe('ScannerService with LocalFileSystemProvider', () => {
     }
 
     // Test getImageData by index
-    const imageData = await scanner.getImageData(bundleB.id, bundleB.type as 'directory', 0);
+    const imageData = await scanner.getImageData(bundleB.path, bundleB.type as 'directory', 0);
     expect(imageData).toBeInstanceOf(Buffer);
     // Note: fixture files are empty, so we just check that we get a Buffer
     expect(imageData.length).toBeGreaterThanOrEqual(0);
 
     // Test getImageDataByPath - need to get the actual file name
-    const details = await scanner.getBundleDetails(bundleB.id, bundleB.type as 'directory');
+    const details = await scanner.getBundleDetails(bundleB.path, bundleB.type as 'directory');
     const firstImageName = path.basename(details.pages[0]);
-    const imageDataByPath = await scanner.getImageDataByPath(bundleB.id, bundleB.type as 'directory', firstImageName);
+    const imageDataByPath = await scanner.getImageDataByPath(bundleB.path, bundleB.type as 'directory', firstImageName);
     expect(imageDataByPath).toBeInstanceOf(Buffer);
     expect(imageDataByPath.length).toBeGreaterThanOrEqual(0);
   });
