@@ -74,7 +74,7 @@ export async function GET(request: Request) {
     
     if (imagePath) {
       // Get image by specific path
-      imageData = await scanner.getImageDataByPath(bundle.path, bundleType, imagePath);
+      imageData = await scanner.getImageDataByPath(bundle.id, imagePath);
     } else if (pageIndexParam !== null) {
       // Get image by page index
       const pageIndex = parseInt(pageIndexParam, 10);
@@ -87,7 +87,7 @@ export async function GET(request: Request) {
           { status: 400 }
         );
       }
-      imageData = await scanner.getImageData(bundle.path, bundleType, pageIndex);
+      imageData = await scanner.getImageData(bundle.id, pageIndex);
     } else {
       return NextResponse.json(
         {

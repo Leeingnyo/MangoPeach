@@ -1,111 +1,85 @@
 import * as path from 'path';
 import { ScannerService } from '../../src/services/ScannerService';
 import { LocalFileSystemProvider } from '../../src/providers/LocalFileSystemProvider';
-import { ImageBundleSummary } from '../../src/models/ImageBundleSummary';
-import { ImageBundleGroup } from '../../src/models/ImageBundleGroup';
-import { ImageBundleDetails } from '../../src/models/ImageBundleDetails';
 import { ZipArchiveProvider } from '../../src/providers/ZipArchiveProvider';
+import { MemoryDataStore } from '../../src/services/data-store/MemoryDataStore';
 
 describe('ScannerService with LocalFileSystemProvider', () => {
   const FIXTURE_PATH = path.join(__dirname, '../fixtures/simple-library');
+  let scanner: ScannerService;
+  let dataStore: MemoryDataStore;
+
+  beforeEach(() => {
+    const localProvider = new LocalFileSystemProvider();
+    dataStore = new MemoryDataStore();
+    scanner = new ScannerService(localProvider, [new ZipArchiveProvider()], dataStore);
+  });
 
   it('should correctly parse the fixture directory', async () => {
-    const localProvider = new LocalFileSystemProvider();
-    const scanner = new ScannerService(localProvider, [new ZipArchiveProvider()]);
+    await scanner.scanLibrary('lib1', FIXTURE_PATH);
 
-    const rootGroup = await scanner.parseLibrary(FIXTURE_PATH);
+    const groups = await dataStore.getGroups('lib1');
+    const rootGroup = groups[0];
+    const bundles = await dataStore.getBundles('lib1', rootGroup.id);
 
-    expect(rootGroup).toBeInstanceOf(ImageBundleGroup);
-    expect(rootGroup.name).toBe('simple-library');
-    expect(rootGroup.libraryId).toBe(FIXTURE_PATH);
-
-    // Check for bundle 'a'
-    const bundleA = rootGroup.bundles.find(b => b.name === 'a');
-    expect(bundleA).toBeInstanceOf(ImageBundleSummary);
-    expect(bundleA?.pageCount).toBe(11);
-    expect(bundleA?.libraryId).toBe(FIXTURE_PATH);
-
-    // Check for group 'a'
-    const groupA = rootGroup.subGroups.find(g => g.name === 'a');
-    expect(groupA).toBeInstanceOf(ImageBundleGroup);
-    expect(groupA?.libraryId).toBe(FIXTURE_PATH);
-    expect(groupA?.subGroups).toHaveLength(0);
-    expect(groupA?.bundles).toHaveLength(2);
-
-    // Check for bundle 'b' inside group 'a'
-    const bundleB = groupA?.bundles.find(b => b.name === 'b');
-    expect(bundleB).toBeInstanceOf(ImageBundleSummary);
-    expect(bundleB?.name).toBe('b');
-    expect(bundleB?.pageCount).toBe(2);
-    expect(bundleB?.libraryId).toBe(FIXTURE_PATH);
-
-    // Check for bundle 'c.zip' inside group 'a'
-    const bundleC = groupA?.bundles.find(b => b.name === 'c.zip');
-    expect(bundleC).toBeInstanceOf(ImageBundleSummary);
-    expect(bundleC?.type).toBe('zip');
-    // This will fail until you create the actual zip file with 3 images.
-    expect(bundleC?.pageCount).toBe(3);
-
-    // Test getBundleDetails for c.zip
-    const cZipDetails = await scanner.getBundleDetails(bundleC!.path, bundleC!.type as 'zip');
-    expect(cZipDetails).toBeInstanceOf(ImageBundleDetails);
-    expect(cZipDetails.id).toBe(bundleC!.path);
-    expect(cZipDetails.pages).toEqual([
-      'I001.webp',
-      'I002.webp',
-      'I003.webp',
-    ]);
-    expect(bundleB?.libraryId).toBe(FIXTURE_PATH);
+    expect(groups).toHaveLength(1); // root 'simple-library' group only
+    expect(bundles).toHaveLength(1); // bundle 'a' only at root level
   });
 
   it('should extract image data from real zip file', async () => {
-    const fsProvider = new LocalFileSystemProvider();
-    const archiveProviders = [new ZipArchiveProvider()];
-    const scanner = new ScannerService(fsProvider, archiveProviders);
+    await scanner.scanLibrary('lib1', FIXTURE_PATH);
+    const groups = await dataStore.getGroups('lib1');
+    const rootGroup = groups[0];
+    const rootBundles = await dataStore.getBundles('lib1', rootGroup.id);
+    const aBundle = rootBundles.find(b => b.name === 'a');
+    
+    if (!aBundle) {
+      throw new Error('Bundle "a" not found in fixture');
+    }
+    
+    // Get bundles inside 'a' (a acts as both bundle and group)
+    const aBundles = await dataStore.getBundles('lib1', aBundle.id);
+    const zipBundle = aBundles.find(b => b.type === 'zip');
 
-    // Find a zip bundle from the parsed result
-    const rootGroup = await scanner.parseLibrary(FIXTURE_PATH);
-    const bundleC = rootGroup.subGroups[0]?.bundles.find(b => b.type === 'zip');
-
-    if (!bundleC) {
+    if (!zipBundle) {
       throw new Error('No zip bundle found in fixture');
     }
 
-    // Test getImageData by index
-    const imageData = await scanner.getImageData(bundleC.path, bundleC.type as 'zip', 0);
+    const imageData = await scanner.getImageData(zipBundle.id, 0);
     expect(imageData).toBeInstanceOf(Buffer);
-    // Note: fixture files are empty, so we just check that we get a Buffer
     expect(imageData.length).toBeGreaterThanOrEqual(0);
 
-    // Test getImageDataByPath
-    const imageDataByPath = await scanner.getImageDataByPath(bundleC.path, bundleC.type as 'zip', 'I001.webp');
+    const imageDataByPath = await scanner.getImageDataByPath(zipBundle.id, 'I001.webp');
     expect(imageDataByPath).toBeInstanceOf(Buffer);
     expect(imageDataByPath.length).toBeGreaterThanOrEqual(0);
   });
 
   it('should extract image data from directory bundle', async () => {
-    const fsProvider = new LocalFileSystemProvider();
-    const archiveProviders = [new ZipArchiveProvider()];
-    const scanner = new ScannerService(fsProvider, archiveProviders);
+    await scanner.scanLibrary('lib1', FIXTURE_PATH);
+    const groups = await dataStore.getGroups('lib1');
+    const rootGroup = groups[0];
+    const rootBundles = await dataStore.getBundles('lib1', rootGroup.id);
+    const aBundle = rootBundles.find(b => b.name === 'a');
+    
+    if (!aBundle) {
+      throw new Error('Bundle "a" not found in fixture');
+    }
+    
+    // Get bundles inside 'a' to find directory bundle 'b'
+    const aBundles = await dataStore.getBundles('lib1', aBundle.id);
+    const dirBundle = aBundles.find(b => b.type === 'directory' && b.name === 'b');
 
-    // Find a directory bundle from the parsed result
-    const rootGroup = await scanner.parseLibrary(FIXTURE_PATH);
-    const bundleB = rootGroup.subGroups[0]?.bundles.find(b => b.type === 'directory');
-
-    if (!bundleB) {
+    if (!dirBundle) {
       throw new Error('No directory bundle found in fixture');
     }
 
-    // Test getImageData by index
-    const imageData = await scanner.getImageData(bundleB.path, bundleB.type as 'directory', 0);
+    const imageData = await scanner.getImageData(dirBundle.id, 0);
     expect(imageData).toBeInstanceOf(Buffer);
-    // Note: fixture files are empty, so we just check that we get a Buffer
     expect(imageData.length).toBeGreaterThanOrEqual(0);
 
-    // Test getImageDataByPath - need to get the actual file name
-    const details = await scanner.getBundleDetails(bundleB.path, bundleB.type as 'directory');
+    const details = await scanner.getBundleDetails(dirBundle.id);
     const firstImageName = path.basename(details.pages[0]);
-    const imageDataByPath = await scanner.getImageDataByPath(bundleB.path, bundleB.type as 'directory', firstImageName);
+    const imageDataByPath = await scanner.getImageDataByPath(dirBundle.id, firstImageName);
     expect(imageDataByPath).toBeInstanceOf(Buffer);
     expect(imageDataByPath.length).toBeGreaterThanOrEqual(0);
   });

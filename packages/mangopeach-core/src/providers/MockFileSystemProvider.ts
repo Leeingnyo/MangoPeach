@@ -39,6 +39,37 @@ export class MockFileSystemProvider implements IFileSystemProvider {
     }
   }
 
+  public setFixture(fixture: Record<string, string[]>) {
+    this.fileSystem.clear();
+    this.stats.clear();
+    for (const [dirPath, entries] of Object.entries(fixture)) {
+      const fsEntries: FileSystemEntry[] = entries.map(name => {
+        const fullPath = path.join(dirPath, name);
+        const isDirectory = !name.includes('.');
+        return {
+          name,
+          path: fullPath,
+          isDirectory: () => isDirectory,
+          isFile: () => !isDirectory,
+        };
+      });
+
+      this.fileSystem.set(dirPath, fsEntries);
+
+      const allPaths = [dirPath, ...fsEntries.map(e => e.path)];
+      for (const p of allPaths) {
+        if (!this.stats.has(p)) {
+          this.stats.set(p, {
+            fileId: p, // Use path as a mock fileId
+            modifiedAt: new Date(),
+            createdAt: new Date(),
+            size: 1024,
+          });
+        }
+      }
+    }
+  }
+
   readdir(dirPath: string): Promise<FileSystemEntry[]> {
     return Promise.resolve(this.fileSystem.get(dirPath) || []);
   }

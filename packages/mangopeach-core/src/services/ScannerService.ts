@@ -3,90 +3,140 @@ import * as crypto from 'crypto';
 import { ImageBundleSummary } from '../models/ImageBundleSummary';
 import { ImageBundleDetails } from '../models/ImageBundleDetails';
 import { ImageBundleGroup } from '../models/ImageBundleGroup';
-import { IFileSystemProvider } from '../providers/IFileSystemProvider';
+import { IFileSystemProvider, FileSystemEntry } from '../providers/IFileSystemProvider';
 import { IArchiveProvider } from '../providers/IArchiveProvider';
 import { isImageFile, isArchiveFile } from '../utils/file-types';
 import { naturalSort } from '../utils/natural-sort';
+import { ILibraryStore } from './data-store/ILibraryStore';
 
 export class ScannerService {
   private fsProvider: IFileSystemProvider;
   private archiveProviders: IArchiveProvider[];
+  private dataStore: ILibraryStore;
 
-  constructor(fsProvider: IFileSystemProvider, archiveProviders: IArchiveProvider[]) {
+  constructor(fsProvider: IFileSystemProvider, archiveProviders: IArchiveProvider[], dataStore: ILibraryStore) {
     this.fsProvider = fsProvider;
     this.archiveProviders = archiveProviders;
+    this.dataStore = dataStore;
   }
 
-  private generateBundleId(libraryId: string, fileId?: string, fallbackPath?: string): string {
-    const input = fileId 
-      ? `${libraryId}:${fileId}`
-      : `${libraryId}:${fallbackPath}`;
+  private generateId(libraryId: string, fileId?: string, fallbackRelativePath?: string): string {
+    const input = fileId ? `${libraryId}:${fileId}` : `${libraryId}:${fallbackRelativePath}`;
     return crypto.createHash('sha256').update(input).digest('hex').substring(0, 12);
   }
 
-  public async parseLibrary(libraryPath: string): Promise<ImageBundleGroup> {
-    const libraryId = libraryPath;
-    const libraryName = path.basename(libraryPath);
-    const rootGroupId = this.generateBundleId(libraryId, undefined, libraryPath);
-    const rootGroup = new ImageBundleGroup(rootGroupId, libraryName, libraryPath, libraryId);
+  public async scanLibrary(libraryId: string, libraryPath: string): Promise<ImageBundleSummary[]> {
+    const existingGroups = await this.dataStore.getGroups(libraryId);
+    const existingBundles = await this.dataStore.getBundles(libraryId);
+    const seenGroupIds = new Set<string>();
+    const seenBundleIds = new Set<string>();
 
-    const items = await this.parsePath(libraryPath, libraryId);
+    const rootGroupStats = await this.fsProvider.stat(libraryPath);
+    const rootGroupId = this.generateId(libraryId, rootGroupStats.fileId, '.');
+    const rootGroup = new ImageBundleGroup(rootGroupId, path.basename(libraryPath), libraryPath, libraryId, undefined);
+    await this.dataStore.upsertGroup(rootGroup);
+    seenGroupIds.add(rootGroupId);
 
-    rootGroup.bundles = items.filter((item): item is ImageBundleSummary => item instanceof ImageBundleSummary);
-    rootGroup.subGroups = items.filter((item): item is ImageBundleGroup => item instanceof ImageBundleGroup);
+    await this.scanPath(libraryPath, libraryId, libraryPath, rootGroupId, seenGroupIds, seenBundleIds);
 
-    return rootGroup;
+    const deletedGroups = existingGroups.filter(g => !seenGroupIds.has(g.id));
+    const deletedBundles = existingBundles.filter(b => !seenBundleIds.has(b.id));
+
+    for (const group of deletedGroups) {
+      await this.dataStore.deleteGroup(group.id);
+    }
+    for (const bundle of deletedBundles) {
+      await this.dataStore.deleteBundle(bundle.id);
+    }
+
+    return deletedBundles;
   }
 
-  private async parsePath(dirPath: string, libraryId: string): Promise<(ImageBundleSummary | ImageBundleGroup)[]> {
-    const results: (ImageBundleSummary | ImageBundleGroup)[] = [];
-
+  private async scanPath(dirPath: string, libraryId: string, libraryPath: string, parentId: string, seenGroupIds: Set<string>, seenBundleIds: Set<string>): Promise<void> {
     let entries;
     try {
       entries = await this.fsProvider.readdir(dirPath);
     } catch (error) {
       console.error(`Failed to read directory: ${dirPath}`, error);
-      return [];
+      return;
     }
 
     for (const entry of entries) {
       const entryPath = entry.path;
+      const relativePath = path.relative(libraryPath, entryPath);
 
       if (entry.isDirectory()) {
-        const subItems = await this.parsePath(entryPath, libraryId);
-
-        if (await this.isImageBundle(entryPath)) {
-          const stats = await this.fsProvider.stat(entryPath);
-          const dirEntries = await this.fsProvider.readdir(entryPath);
-          const imageFiles = dirEntries.filter(e => e.isFile() && isImageFile(e.name));
-          const bundleId = this.generateBundleId(libraryId, stats.fileId, entryPath);
-          const bundle = new ImageBundleSummary(
-            bundleId,
-            'directory',
-            entry.name,
-            entryPath,
-            libraryId,
-            imageFiles.length,
-            stats.modifiedAt,
-            stats.fileId
-          );
-          results.push(bundle);
+        const isBundle = await this.isImageBundle(entryPath);
+        const hasSubdirectoriesOrArchives = await this.hasSubdirectoriesOrArchives(entryPath);
+        
+        let groupId: string | undefined;
+        
+        // Create bundle if directory contains images
+        if (isBundle) {
+          await this.createBundleFromDirectory(entry, libraryId, libraryPath, parentId, seenBundleIds);
         }
-
-        if (subItems.length > 0) {
+        
+        // Create group if directory contains subdirectories/archives OR if no images (can be both bundle AND group)
+        if (hasSubdirectoriesOrArchives || !isBundle) {
           const stats = await this.fsProvider.stat(entryPath);
-          const groupId = this.generateBundleId(libraryId, stats.fileId, entryPath);
-          const group = new ImageBundleGroup(groupId, entry.name, entryPath, libraryId);
-          group.bundles = subItems.filter((item): item is ImageBundleSummary => item instanceof ImageBundleSummary);
-          group.subGroups = subItems.filter((item): item is ImageBundleGroup => item instanceof ImageBundleGroup);
-          results.push(group);
+          groupId = this.generateId(libraryId, stats.fileId, relativePath);
+          const group = new ImageBundleGroup(groupId, entry.name, entryPath, libraryId, parentId);
+          await this.dataStore.upsertGroup(group);
+          seenGroupIds.add(groupId);
+          await this.scanPath(entryPath, libraryId, libraryPath, groupId, seenGroupIds, seenBundleIds);
         }
       } else if (entry.isFile() && isArchiveFile(entry.name)) {
-        const bundle = await this.parseArchive(entryPath, libraryId);
-        results.push(bundle);
+        await this.createBundleFromArchive(entry, libraryId, libraryPath, parentId, seenBundleIds);
       }
     }
-    return results;
+  }
+
+  private async createBundleFromDirectory(entry: FileSystemEntry, libraryId: string, libraryPath: string, parentId: string, seenBundleIds: Set<string>): Promise<void> {
+    const stats = await this.fsProvider.stat(entry.path);
+    const dirEntries = await this.fsProvider.readdir(entry.path);
+    const imageFiles = dirEntries.filter(e => e.isFile() && isImageFile(e.name));
+    const relativePath = path.relative(libraryPath, entry.path);
+    const bundleId = this.generateId(libraryId, stats.fileId, relativePath);
+    const bundle = new ImageBundleSummary(
+      bundleId,
+      'directory',
+      entry.name,
+      entry.path,
+      libraryId,
+      imageFiles.length,
+      stats.modifiedAt,
+      stats.fileId,
+      parentId
+    );
+    await this.dataStore.upsertBundle(bundle);
+    seenBundleIds.add(bundleId);
+  }
+
+  private async createBundleFromArchive(entry: FileSystemEntry, libraryId: string, libraryPath: string, parentId: string, seenBundleIds: Set<string>): Promise<void> {
+    const provider = this.archiveProviders.find(p => p.supports(entry.path));
+    if (!provider) {
+      console.warn(`Unsupported archive type: ${entry.path}`);
+      return;
+    }
+
+    const entries = await provider.getEntries(entry.path);
+    const imageEntries = entries.filter(e => !e.isDirectory && isImageFile(e.name));
+    const stats = await this.fsProvider.stat(entry.path);
+    const relativePath = path.relative(libraryPath, entry.path);
+    const bundleId = this.generateId(libraryId, stats.fileId, relativePath);
+    const bundle = new ImageBundleSummary(
+      bundleId,
+      provider.getType(),
+      path.basename(entry.path),
+      entry.path,
+      libraryId,
+      imageEntries.length,
+      stats.modifiedAt,
+      stats.fileId,
+      parentId
+    );
+    await this.dataStore.upsertBundle(bundle);
+    seenBundleIds.add(bundleId);
   }
 
   private async isImageBundle(dirPath: string): Promise<boolean> {
@@ -99,62 +149,48 @@ export class ScannerService {
     }
   }
 
-  public async parseArchive(archivePath: string, libraryId: string): Promise<ImageBundleSummary> {
-    const provider = this.archiveProviders.find(p => p.supports(archivePath));
-    if (!provider) {
-      throw new Error(`Unsupported archive type: ${archivePath}`);
+  private async hasSubdirectoriesOrArchives(dirPath: string): Promise<boolean> {
+    try {
+      const entries = await this.fsProvider.readdir(dirPath);
+      return entries.some(entry => 
+        entry.isDirectory() || 
+        (entry.isFile() && isArchiveFile(entry.name))
+      );
+    } catch (error) {
+      console.error(`Error reading directory ${dirPath}:`, error);
+      return false;
     }
-
-    const entries = await provider.getEntries(archivePath);
-    const imageEntries = entries.filter(e => !e.isDirectory && isImageFile(e.name));
-    const stats = await this.fsProvider.stat(archivePath);
-
-    const bundleId = this.generateBundleId(libraryId, stats.fileId, archivePath);
-    return new ImageBundleSummary(
-      bundleId,
-      provider.getType(),
-      path.basename(archivePath),
-      archivePath,
-      libraryId,
-      imageEntries.length,
-      stats.modifiedAt,
-      stats.fileId
-    );
   }
 
-  /**
-   * Retrieves the detailed information (page list) for a specific ImageBundleSummary.
-   * @param bundleId The ID of the ImageBundleSummary (which is its path).
-   * @param type The type of the bundle ('directory' or archive type).
-   * @returns An ImageBundleDetails object.
-   */
-  public async getBundleDetails(bundleId: string, type: 'directory' | 'zip' | 'rar' | '7z'): Promise<ImageBundleDetails> {
+  public async getBundleDetails(bundleId: string): Promise<ImageBundleDetails> {
+    const bundle = await this.dataStore.getBundle(bundleId);
+    if (!bundle) {
+      throw new Error(`Bundle with ID ${bundleId} not found`);
+    }
+
     let pages: string[] = [];
 
-    if (type === 'directory') {
-      const entries = await this.fsProvider.readdir(bundleId);
+    if (bundle.type === 'directory') {
+      const entries = await this.fsProvider.readdir(bundle.path);
       pages = entries.filter(e => e.isFile() && isImageFile(e.name)).map(e => e.path);
     } else {
-      const provider = this.archiveProviders.find(p => p.getType() === type);
+      const provider = this.archiveProviders.find(p => p.getType() === bundle.type);
       if (!provider) {
-        throw new Error(`No archive provider found for type: ${type}`);
+        throw new Error(`No archive provider found for type: ${bundle.type}`);
       }
-      const entries = await provider.getEntries(bundleId);
+      const entries = await provider.getEntries(bundle.path);
       pages = entries.filter(e => !e.isDirectory && isImageFile(e.name)).map(e => e.path);
     }
 
     return new ImageBundleDetails(bundleId, naturalSort(pages));
   }
 
-  /**
-   * Extracts image data from a bundle at a specific page index
-   * @param bundleId The ID of the ImageBundleSummary (which is its path)
-   * @param type The type of the bundle ('directory' or archive type)
-   * @param pageIndex The index of the page to extract (0-based)
-   * @returns The image data as a Buffer
-   */
-  public async getImageData(bundleId: string, type: 'directory' | 'zip' | 'rar' | '7z', pageIndex: number): Promise<Buffer> {
-    const details = await this.getBundleDetails(bundleId, type);
+  public async getImageData(bundleId: string, pageIndex: number): Promise<Buffer> {
+    const bundle = await this.dataStore.getBundle(bundleId);
+    if (!bundle) {
+      throw new Error(`Bundle with ID ${bundleId} not found`);
+    }
+    const details = await this.getBundleDetails(bundleId);
     
     if (pageIndex < 0 || pageIndex >= details.pages.length) {
       throw new Error(`Page index ${pageIndex} out of range (0-${details.pages.length - 1})`);
@@ -162,35 +198,32 @@ export class ScannerService {
 
     const imagePath = details.pages[pageIndex];
 
-    if (type === 'directory') {
+    if (bundle.type === 'directory') {
       return await this.fsProvider.readFile(imagePath);
     } else {
-      const provider = this.archiveProviders.find(p => p.getType() === type);
+      const provider = this.archiveProviders.find(p => p.getType() === bundle.type);
       if (!provider) {
-        throw new Error(`No archive provider found for type: ${type}`);
+        throw new Error(`No archive provider found for type: ${bundle.type}`);
       }
-      // For archives, imagePath is already the relative path within the archive
-      return await provider.extractFile(bundleId, imagePath);
+      return await provider.extractFile(bundle.path, imagePath);
     }
   }
 
-  /**
-   * Extracts image data from a bundle by image path
-   * @param bundleId The ID of the ImageBundleSummary (which is its path)
-   * @param type The type of the bundle ('directory' or archive type)
-   * @param imagePath The path to the image within the bundle
-   * @returns The image data as a Buffer
-   */
-  public async getImageDataByPath(bundleId: string, type: 'directory' | 'zip' | 'rar' | '7z', imagePath: string): Promise<Buffer> {
-    if (type === 'directory') {
-      const fullPath = path.join(bundleId, imagePath);
+  public async getImageDataByPath(bundleId: string, imagePath: string): Promise<Buffer> {
+    const bundle = await this.dataStore.getBundle(bundleId);
+    if (!bundle) {
+      throw new Error(`Bundle with ID ${bundleId} not found`);
+    }
+
+    if (bundle.type === 'directory') {
+      const fullPath = path.join(bundle.path, imagePath);
       return await this.fsProvider.readFile(fullPath);
     } else {
-      const provider = this.archiveProviders.find(p => p.getType() === type);
+      const provider = this.archiveProviders.find(p => p.getType() === bundle.type);
       if (!provider) {
-        throw new Error(`No archive provider found for type: ${type}`);
+        throw new Error(`No archive provider found for type: ${bundle.type}`);
       }
-      return await provider.extractFile(bundleId, imagePath);
+      return await provider.extractFile(bundle.path, imagePath);
     }
   }
 }

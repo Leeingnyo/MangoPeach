@@ -5,6 +5,9 @@ import { Library } from '../../src/models/Library';
 import { ServerConfig } from '../../src/models/ServerConfig';
 import { MemoryDataStore } from '../../src/services/data-store/MemoryDataStore';
 import { ILibraryStore } from '../../src/services/data-store/ILibraryStore';
+import { ScannerService } from '../../src/services/ScannerService';
+import { LocalFileSystemProvider } from '../../src/providers/LocalFileSystemProvider';
+import { ZipArchiveProvider } from '../../src/providers/ZipArchiveProvider';
 
 jest.mock('../../src/services/ServerConfigService');
 const MockedServerConfigService = ServerConfigService as jest.MockedClass<typeof ServerConfigService>;
@@ -15,14 +18,10 @@ describe('LibraryManager (Integration Test with MemoryDataStore)', () => {
   let mockConfigService: jest.Mocked<ServerConfigService>;
 
   beforeEach(async () => {
-    // Use MemoryDataStore for integration tests
     dataStore = new MemoryDataStore();
-    
-    // Create mock config service
     mockConfigService = new MockedServerConfigService('') as jest.Mocked<ServerConfigService>;
     mockConfigService.loadConfig = jest.fn();
     mockConfigService.saveConfig = jest.fn();
-    
     libraryManager = new LibraryManager(dataStore, mockConfigService);
   });
 
@@ -52,7 +51,6 @@ describe('LibraryManager (Integration Test with MemoryDataStore)', () => {
   it('should initialize and perform an initial scan for a new library', async () => {
     const libraryPath = path.join(__dirname, '../fixtures/simple-library');
     
-    // Mock server config with library configuration
     const serverConfig: ServerConfig = {
       libraries: [{
         name: 'Test Library 1',
@@ -70,22 +68,17 @@ describe('LibraryManager (Integration Test with MemoryDataStore)', () => {
     expect(loadedLibConfigs[0].name).toBe('Test Library 1');
     expect(loadedLibConfigs[0].path).toBe(libraryPath);
 
-    const libraryData = await libraryManager.getLibraryData(loadedLibConfigs[0].id);
-    expect(libraryData).toBeDefined();
-    expect(libraryData?.name).toBe('simple-library');
-    expect(libraryData?.bundles).toHaveLength(1);
-    expect(libraryData?.subGroups).toHaveLength(1);
-
-    // Verify data is saved in the data store
-    const savedData = await dataStore.getLibraryData(loadedLibConfigs[0].id);
-    expect(savedData).toBeDefined();
-    expect(savedData?.name).toBe('simple-library');
+    const { groups } = await libraryManager.getLibraryData(loadedLibConfigs[0].id);
+    expect(groups).toHaveLength(1);
+    
+    const rootGroup = groups[0];
+    const { bundles } = await libraryManager.getLibraryData(loadedLibConfigs[0].id, rootGroup.id);
+    expect(bundles).toHaveLength(1);
   });
 
   it('should load existing scan data for a library from the data store', async () => {
     const libraryPath = path.join(__dirname, '../fixtures/simple-library');
     
-    // Pre-create library in data store
     const libConfig: Omit<Library, 'id' | 'createdAt' | 'updatedAt'> = {
       name: 'Test Library 2',
       path: libraryPath,
@@ -95,15 +88,9 @@ describe('LibraryManager (Integration Test with MemoryDataStore)', () => {
     };
     const createdLib = await dataStore.createLibrary(libConfig);
 
-    // Manually create and save initial scan data to the data store
-    const { ScannerService } = await import('../../src/services/ScannerService');
-    const { LocalFileSystemProvider } = await import('../../src/providers/LocalFileSystemProvider');
-    const { ZipArchiveProvider } = await import('../../src/providers/ZipArchiveProvider');
-    const initialScanner = new ScannerService(new LocalFileSystemProvider(), [new ZipArchiveProvider()]);
-    const initialData = await initialScanner.parseLibrary(libraryPath);
-    await dataStore.saveLibraryData(createdLib.id, initialData);
+    const scanner = new ScannerService(new LocalFileSystemProvider(), [new ZipArchiveProvider()], dataStore);
+    await scanner.scanLibrary(createdLib.id, libraryPath);
 
-    // Mock server config that matches the library
     const serverConfig: ServerConfig = {
       libraries: [{
         name: 'Test Library 2',
@@ -114,20 +101,20 @@ describe('LibraryManager (Integration Test with MemoryDataStore)', () => {
     };
     mockConfigService.loadConfig.mockResolvedValue(serverConfig);
 
-    // Spy on the scanner to ensure it's called during initialization
-    const scannerSpy = jest.spyOn(ScannerService.prototype, 'parseLibrary');
+    const scannerSpy = jest.spyOn(ScannerService.prototype, 'scanLibrary');
 
-    // Initialize LibraryManager, which should load the existing data
     await libraryManager.initialize();
 
     const loadedLibConfigs = await libraryManager.getAllLibraries();
     expect(loadedLibConfigs).toHaveLength(1);
-    expect(scannerSpy).toHaveBeenCalled(); // Now we always scan to check for changes
+    expect(scannerSpy).not.toHaveBeenCalled();
 
-    const libraryData = await libraryManager.getLibraryData(loadedLibConfigs[0].id);
-    expect(libraryData).toBeDefined();
-    expect(libraryData?.name).toBe('simple-library');
-    // Data might be updated after scan, so we just check it exists
+    const { groups } = await libraryManager.getLibraryData(loadedLibConfigs[0].id);
+    expect(groups).toHaveLength(1);
+    
+    const rootGroup = groups[0];
+    const { bundles } = await libraryManager.getLibraryData(loadedLibConfigs[0].id, rootGroup.id);
+    expect(bundles).toHaveLength(1);
 
     scannerSpy.mockRestore();
   });

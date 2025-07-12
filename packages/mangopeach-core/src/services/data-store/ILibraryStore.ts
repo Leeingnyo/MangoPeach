@@ -1,6 +1,7 @@
 
 import { Library } from '../../models/Library';
 import { ImageBundleGroup } from '../../models/ImageBundleGroup';
+import { ImageBundleSummary } from '../../models/ImageBundleSummary';
 
 /**
  * Defines the contract for storing and retrieving library and scan data.
@@ -16,6 +17,10 @@ export interface ILibraryStore {
    * @param libraryId The ID of the library to retrieve.
    */
   getLibrary(libraryId: string): Promise<Library | null>;
+
+  findLibraryByDirectoryId(directoryId: string): Promise<Library | null>;
+
+  findLibraryByPath(path: string): Promise<Library | null>;
 
   /**
    * Creates a new library configuration.
@@ -36,18 +41,19 @@ export interface ILibraryStore {
    */
   deleteLibrary(libraryId: string): Promise<void>;
 
-  /**
-   * Retrieves the entire scanned data tree for a given library.
-   * @param libraryId The ID of the library whose data is to be loaded.
-   * @returns The root ImageBundleGroup of the library, or null if not found.
-   */
-  getLibraryData(libraryId: string): Promise<ImageBundleGroup | null>;
+  getGroups(libraryId: string, parentId?: string): Promise<ImageBundleGroup[]>;
 
-  /**
-   * Saves the entire scanned data tree for a given library,
-   * replacing any previously existing data for that library.
-   * @param libraryId The ID of the library to which the data belongs.
-   * @param data The root ImageBundleGroup to save.
-   */
-  saveLibraryData(libraryId: string, data: ImageBundleGroup): Promise<void>;
+  getBundles(libraryId: string, parentId?: string): Promise<ImageBundleSummary[]>;
+
+  upsertGroup(group: ImageBundleGroup): Promise<void>;
+
+  upsertBundle(bundle: ImageBundleSummary): Promise<void>;
+
+  deleteGroup(groupId: string): Promise<void>;
+
+  deleteBundle(bundleId: string): Promise<void>;
+
+  getGroup(groupId: string): Promise<ImageBundleGroup | null>;
+
+  getBundle(bundleId: string): Promise<ImageBundleSummary | null>;
 }

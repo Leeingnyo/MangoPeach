@@ -3,13 +3,15 @@ import { Library } from '../../models/Library';
 import { ImageBundleGroup } from '../../models/ImageBundleGroup';
 import { ILibraryStore } from './ILibraryStore';
 import * as crypto from 'crypto';
+import { ImageBundleSummary } from '../../models/ImageBundleSummary';
 
 /**
  * An in-memory implementation of the ILibraryStore for testing and development.
  */
 export class MemoryDataStore implements ILibraryStore {
   private libraries = new Map<string, Library>();
-  private scanData = new Map<string, ImageBundleGroup>();
+  private groups = new Map<string, ImageBundleGroup>();
+  private bundles = new Map<string, ImageBundleSummary>();
 
   private generateLibraryId(directoryId?: string, fallbackPath?: string): string {
     const input = directoryId || fallbackPath || 'unknown';
@@ -22,6 +24,26 @@ export class MemoryDataStore implements ILibraryStore {
 
   public async getLibrary(libraryId: string): Promise<Library | null> {
     return this.libraries.get(libraryId) || null;
+  }
+
+  public async findLibraryByDirectoryId(directoryId: string): Promise<Library | null> {
+    let found: Library | null = null;
+    this.libraries.forEach(library => {
+      if (library.directoryId === directoryId) {
+        found = library;
+      }
+    });
+    return found;
+  }
+
+  public async findLibraryByPath(path: string): Promise<Library | null> {
+    let found: Library | null = null;
+    this.libraries.forEach(library => {
+      if (library.path === path) {
+        found = library;
+      }
+    });
+    return found;
   }
 
   public async createLibrary(libraryData: Omit<Library, 'id' | 'createdAt' | 'updatedAt'>): Promise<Library> {
@@ -52,14 +74,48 @@ export class MemoryDataStore implements ILibraryStore {
 
   public async deleteLibrary(libraryId: string): Promise<void> {
     this.libraries.delete(libraryId);
-    this.scanData.delete(libraryId);
+    // Also remove associated groups and bundles
+    this.groups.forEach(group => {
+      if (group.libraryId === libraryId) {
+        this.groups.delete(group.id);
+      }
+    });
+    this.bundles.forEach(bundle => {
+      if (bundle.libraryId === libraryId) {
+        this.bundles.delete(bundle.id);
+      }
+    });
   }
 
-  public async getLibraryData(libraryId: string): Promise<ImageBundleGroup | null> {
-    return this.scanData.get(libraryId) || null;
+  public async getGroups(libraryId: string, parentId?: string): Promise<ImageBundleGroup[]> {
+    return Array.from(this.groups.values()).filter(g => g.libraryId === libraryId && g.parentId === parentId);
   }
 
-  public async saveLibraryData(libraryId: string, data: ImageBundleGroup): Promise<void> {
-    this.scanData.set(libraryId, data);
+  public async getBundles(libraryId: string, parentId?: string): Promise<ImageBundleSummary[]> {
+    return Array.from(this.bundles.values()).filter(b => b.libraryId === libraryId && b.parentId === parentId);
+  }
+
+  public async upsertGroup(group: ImageBundleGroup): Promise<void> {
+    this.groups.set(group.id, group);
+  }
+
+  public async upsertBundle(bundle: ImageBundleSummary): Promise<void> {
+    this.bundles.set(bundle.id, bundle);
+  }
+
+  public async deleteGroup(groupId: string): Promise<void> {
+    this.groups.delete(groupId);
+  }
+
+  public async deleteBundle(bundleId: string): Promise<void> {
+    this.bundles.delete(bundleId);
+  }
+
+  public async getGroup(groupId: string): Promise<ImageBundleGroup | null> {
+    return this.groups.get(groupId) || null;
+  }
+
+  public async getBundle(bundleId: string): Promise<ImageBundleSummary | null> {
+    return this.bundles.get(bundleId) || null;
   }
 }

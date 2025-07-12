@@ -1,7 +1,7 @@
 import { ILibraryStore } from './data-store/ILibraryStore';
 import { ServerConfigService } from './ServerConfigService';
 import { ScannerService } from './ScannerService';
-import { ImageBundleGroup } from '../models/ImageBundleGroup';
+
 import { Library } from '../models/Library';
 import { LibraryConfig } from '../models/LibraryConfig';
 import { IFileSystemProvider } from '../providers/IFileSystemProvider';
@@ -12,12 +12,12 @@ import { ImageBundleSummary } from '../models/ImageBundleSummary';
 import * as cron from 'node-cron';
 
 export class LibraryManager {
-  private dataStore: ILibraryStore;
+  public dataStore: ILibraryStore;
   private configService: ServerConfigService;
   private libraries: Map<string, {
     config: Library;
     scanner: ScannerService;
-    currentData: ImageBundleGroup | null;
+    
   }> = new Map();
   private recentlyDeleted: Map<string, ImageBundleSummary[]> = new Map();
   private scheduledJobs: Map<string, cron.ScheduledTask> = new Map();
@@ -50,10 +50,8 @@ export class LibraryManager {
    * Find existing library by directory ID (inode) or create new one
    */
   private async findOrCreateLibrary(config: LibraryConfig): Promise<Library> {
-    // Try to get directory ID for physical matching
     let directoryId: string | undefined;
     try {
-      // Create appropriate file system provider
       const fsProvider = this.createFileSystemProvider(config.type);
       if (fsProvider) {
         const stats = await fsProvider.stat(config.path);
@@ -63,14 +61,10 @@ export class LibraryManager {
       console.warn(`Failed to get directory ID for ${config.path}:`, error);
     }
 
-    // Try to find existing library by directory ID first
     if (directoryId) {
-      const existingLibraries = await this.dataStore.getAllLibraries();
-      const matchedLibrary = existingLibraries.find(lib => lib.directoryId === directoryId);
-      
+      const matchedLibrary = await this.dataStore.findLibraryByDirectoryId(directoryId);
       if (matchedLibrary) {
         console.log(`Found existing library ${matchedLibrary.name} (${matchedLibrary.id}) for path ${config.path}`);
-        // Update path and name from config, keep other metadata
         const updatedLibrary: Library = {
           ...matchedLibrary,
           name: config.name,
@@ -83,13 +77,9 @@ export class LibraryManager {
       }
     }
 
-    // Fallback: try to find by path
-    const existingLibraries = await this.dataStore.getAllLibraries();
-    const pathMatchedLibrary = existingLibraries.find(lib => lib.path === config.path);
-    
+    const pathMatchedLibrary = await this.dataStore.findLibraryByPath(config.path);
     if (pathMatchedLibrary) {
       console.log(`Found existing library ${pathMatchedLibrary.name} (${pathMatchedLibrary.id}) by path ${config.path}`);
-      // Update with directory ID and other config info
       const updatedLibrary: Library = {
         ...pathMatchedLibrary,
         name: config.name,
@@ -101,78 +91,45 @@ export class LibraryManager {
       return updatedLibrary;
     }
 
-    // Create new library with default settings
     console.log(`Creating new library for ${config.name} at ${config.path}`);
-    const newLibrary = await this.dataStore.createLibrary({
+    return await this.dataStore.createLibrary({
       name: config.name,
       path: config.path,
       type: config.type,
       enabled: true,
-      scanInterval: '0 * * * *', // Default: every hour
+      scanInterval: '0 * * * *',
       directoryId,
     });
-    
-    return newLibrary;
   }
 
   /**
    * Initialize a single library (scan and setup)
    */
   private async initializeLibrary(libConfig: Library): Promise<void> {
-    // Skip disabled libraries
     if (!libConfig.enabled) {
       console.log(`Library ${libConfig.name} is disabled. Skipping initialization.`);
       return;
     }
 
-    // Determine FileSystemProvider based on library type
     const fsProvider = this.createFileSystemProvider(libConfig.type);
     if (!fsProvider) {
       console.warn(`Unsupported library type: ${libConfig.type}. Skipping library ${libConfig.name}.`);
       return;
     }
 
-    // Initialize ArchiveProviders (for now, only Zip)
     const archiveProviders: IArchiveProvider[] = [new ZipArchiveProvider()];
-    // TODO: Add other archive providers like RarArchiveProvider
+    const scanner = new ScannerService(fsProvider, archiveProviders, this.dataStore);
 
-    const scanner = new ScannerService(fsProvider, archiveProviders);
-
-    // Try to load existing scan data for this library
-    let currentData = await this.dataStore.getLibraryData(libConfig.id);
-
-    if (!currentData) {
-      console.log(`No scan data found for ${libConfig.name}. Performing initial full scan...`);
-      currentData = await scanner.parseLibrary(libConfig.path);
-      await this.dataStore.saveLibraryData(libConfig.id, currentData);
-    } else {
-      console.log(`Existing scan data found for ${libConfig.name}. Scanning for changes...`);
-      // Always scan and compare with existing data
-      try {
-        const newData = await scanner.parseLibrary(libConfig.path);
-        const oldBundles = this.flattenBundles(currentData);
-        const newBundles = this.flattenBundles(newData);
-        
-        // Simple comparison - if counts differ, update the data
-        if (oldBundles.length !== newBundles.length) {
-          console.log(`Library ${libConfig.name}: Bundle count changed (${oldBundles.length} -> ${newBundles.length}). Updating data...`);
-          currentData = newData;
-          await this.dataStore.saveLibraryData(libConfig.id, newData);
-        } else {
-          // TODO: More sophisticated comparison could be added here
-          // For now, we'll use the existing data but the scanner is still available for real-time operations
-          console.log(`Library ${libConfig.name}: No significant changes detected.`);
-        }
-      } catch (error) {
-        console.error(`Error scanning library ${libConfig.name}:`, error);
-        console.log(`Using existing scan data for ${libConfig.name}.`);
-      }
+    const rootGroups = await this.dataStore.getGroups(libConfig.id, undefined);
+    if (rootGroups.length === 0) {
+        console.log(`No scan data found for ${libConfig.name}. Performing initial full scan...`);
+        const deletedBundles = await scanner.scanLibrary(libConfig.id, libConfig.path);
+        this.recentlyDeleted.set(libConfig.id, deletedBundles);
     }
 
     this.libraries.set(libConfig.id, {
       config: libConfig,
       scanner,
-      currentData,
     });
     console.log(`Library ${libConfig.name} initialized.`);
   }
@@ -190,12 +147,10 @@ export class LibraryManager {
     }
   }
 
-  public async getLibraryData(libraryId: string): Promise<ImageBundleGroup | null> {
-    const library = this.libraries.get(libraryId);
-    if (library) {
-        return library.currentData;
-    }
-    return await this.dataStore.getLibraryData(libraryId);
+  public async getLibraryData(libraryId: string, parentId?: string) {
+    const groups = await this.dataStore.getGroups(libraryId, parentId);
+    const bundles = await this.dataStore.getBundles(libraryId, parentId);
+    return { groups, bundles };
   }
 
   public async getAllLibraries(): Promise<Library[]> {
@@ -212,92 +167,19 @@ export class LibraryManager {
     return this.recentlyDeleted.get(libraryId) || [];
   }
 
-  public async rescanAndCompare(libraryId: string) {
+  public async rescanLibrary(libraryId: string) {
     const library = this.libraries.get(libraryId);
     if (!library) {
       throw new Error(`Library with ID ${libraryId} not found.`);
     }
 
     console.log(`Rescanning library: ${library.config.name}...`);
-
-    const oldData = library.currentData;
-    const newData = await library.scanner.parseLibrary(library.config.path);
-
-    if (!oldData) {
-      console.log('No previous data, treating all items as new.');
-      library.currentData = newData;
-      await this.dataStore.saveLibraryData(libraryId, newData);
-      return { added: this.flattenBundles(newData), updated: [], moved: [], deleted: [] };
-    }
-
-    const oldBundles = this.flattenBundles(oldData);
-    const newBundles = this.flattenBundles(newData);
-
-    const oldBundlesByPath = new Map(oldBundles.map(b => [b.path, b]));
-    const newBundlesByPath = new Map(newBundles.map(b => [b.path, b]));
-
-    // Filter out bundles without a fileId for the next step
-    const oldBundlesByFileId = new Map(oldBundles.filter(b => b.fileId).map(b => [b.fileId!, b]));
-    const newBundlesByFileId = new Map(newBundles.filter(b => b.fileId).map(b => [b.fileId!, b]));
-
-    const added: ImageBundleSummary[] = [];
-    const updated: ImageBundleSummary[] = [];
-    const moved: { from: ImageBundleSummary; to: ImageBundleSummary }[] = [];
-
-    // 1. Find updated and unchanged files by path
-    for (const newBundle of newBundles) {
-      if (oldBundlesByPath.has(newBundle.path)) {
-        const oldBundle = oldBundlesByPath.get(newBundle.path)!;
-        if (oldBundle.modifiedAt.getTime() !== newBundle.modifiedAt.getTime()) {
-          updated.push(newBundle);
-        }
-        // Remove matched items so they aren't considered for moves/adds/deletes
-        oldBundlesByPath.delete(oldBundle.path);
-        newBundlesByPath.delete(newBundle.path);
-        if(oldBundle.fileId) oldBundlesByFileId.delete(oldBundle.fileId);
-        if(newBundle.fileId) newBundlesByFileId.delete(newBundle.fileId);
-      }
-    }
-
-    // 2. Find moved files by fileId
-    for (const newBundle of Array.from(newBundlesByPath.values())) {
-      if (newBundle.fileId && oldBundlesByFileId.has(newBundle.fileId)) {
-        const oldBundle = oldBundlesByFileId.get(newBundle.fileId)!;
-        moved.push({ from: oldBundle, to: newBundle });
-
-        // Remove matched items so they aren't considered for moves/adds/deletes
-        oldBundlesByPath.delete(oldBundle.path);
-        newBundlesByPath.delete(newBundle.path);
-        oldBundlesByFileId.delete(oldBundle.fileId as string);
-        newBundlesByFileId.delete(newBundle.fileId);
-      }
-    }
-
-    // 3. Remaining items are added or deleted
-    const deleted = Array.from(oldBundlesByPath.values());
-    added.push(...Array.from(newBundlesByPath.values()));
-
-    // 4. Update state
-    library.currentData = newData;
-    await this.dataStore.saveLibraryData(libraryId, newData);
-    this.recentlyDeleted.set(libraryId, deleted);
-
-    console.log(`Scan complete for ${library.config.name}:`);
-    console.log(`  - Added: ${added.length}`);
-    console.log(`  - Updated: ${updated.length}`);
-    console.log(`  - Moved: ${moved.length}`);
-    console.log(`  - Deleted: ${deleted.length}`);
-
-    return { added, updated, moved, deleted };
+    const deletedBundles = await library.scanner.scanLibrary(library.config.id, library.config.path);
+    this.recentlyDeleted.set(libraryId, deletedBundles);
+    console.log(`Scan complete for ${library.config.name}.`);
   }
 
-  private flattenBundles(group: ImageBundleGroup): ImageBundleSummary[] {
-    let bundles = [...group.bundles];
-    for (const subGroup of group.subGroups) {
-      bundles = bundles.concat(this.flattenBundles(subGroup));
-    }
-    return bundles;
-  }
+  
 
   public scheduleScans(): void {
     console.log('Scheduling periodic scans for libraries...');
@@ -309,7 +191,7 @@ export class LibraryManager {
         const job = cron.schedule(config.scanInterval, async () => {
           console.log(`Running scheduled scan for library: ${config.name}`);
           try {
-            await this.rescanAndCompare(libraryId);
+            await this.rescanLibrary(libraryId);
           } catch (error) {
             console.error(`Error during scheduled scan for ${config.name}:`, error);
           }

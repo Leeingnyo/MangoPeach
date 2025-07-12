@@ -1,12 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getInitializedLibraryManager } from '@/lib/core';
 
-export async function GET(
-  request: Request,
-  { params }: { params: { libraryId: string } }
-) {
+export async function GET(request: Request, { params }: { params: Promise<{ libraryId: string }> }) {
   try {
-    const { libraryId } = params;
+    const { libraryId } = await params;
     const manager = await getInitializedLibraryManager();
     const libraryData = await manager.getLibraryData(libraryId);
     
