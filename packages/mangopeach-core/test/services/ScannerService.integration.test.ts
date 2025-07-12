@@ -51,10 +51,62 @@ describe('ScannerService with LocalFileSystemProvider', () => {
     expect(cZipDetails).toBeInstanceOf(ImageBundleDetails);
     expect(cZipDetails.id).toBe(bundleC!.id);
     expect(cZipDetails.pages).toEqual([
-      path.join(bundleC!.id, 'I001.webp'),
-      path.join(bundleC!.id, 'I002.webp'),
-      path.join(bundleC!.id, 'I003.webp'),
+      'I001.webp',
+      'I002.webp',
+      'I003.webp',
     ]);
     expect(bundleB?.libraryId).toBe(FIXTURE_PATH);
+  });
+
+  it('should extract image data from real zip file', async () => {
+    const fsProvider = new LocalFileSystemProvider();
+    const archiveProviders = [new ZipArchiveProvider()];
+    const scanner = new ScannerService(fsProvider, archiveProviders);
+
+    // Find a zip bundle from the parsed result
+    const rootGroup = await scanner.parseLibrary(FIXTURE_PATH);
+    const bundleC = rootGroup.subGroups[0]?.bundles.find(b => b.type === 'zip');
+
+    if (!bundleC) {
+      throw new Error('No zip bundle found in fixture');
+    }
+
+    // Test getImageData by index
+    const imageData = await scanner.getImageData(bundleC.id, bundleC.type as 'zip', 0);
+    expect(imageData).toBeInstanceOf(Buffer);
+    // Note: fixture files are empty, so we just check that we get a Buffer
+    expect(imageData.length).toBeGreaterThanOrEqual(0);
+
+    // Test getImageDataByPath
+    const imageDataByPath = await scanner.getImageDataByPath(bundleC.id, bundleC.type as 'zip', 'I001.webp');
+    expect(imageDataByPath).toBeInstanceOf(Buffer);
+    expect(imageDataByPath.length).toBeGreaterThanOrEqual(0);
+  });
+
+  it('should extract image data from directory bundle', async () => {
+    const fsProvider = new LocalFileSystemProvider();
+    const archiveProviders = [new ZipArchiveProvider()];
+    const scanner = new ScannerService(fsProvider, archiveProviders);
+
+    // Find a directory bundle from the parsed result
+    const rootGroup = await scanner.parseLibrary(FIXTURE_PATH);
+    const bundleB = rootGroup.subGroups[0]?.bundles.find(b => b.type === 'directory');
+
+    if (!bundleB) {
+      throw new Error('No directory bundle found in fixture');
+    }
+
+    // Test getImageData by index
+    const imageData = await scanner.getImageData(bundleB.id, bundleB.type as 'directory', 0);
+    expect(imageData).toBeInstanceOf(Buffer);
+    // Note: fixture files are empty, so we just check that we get a Buffer
+    expect(imageData.length).toBeGreaterThanOrEqual(0);
+
+    // Test getImageDataByPath - need to get the actual file name
+    const details = await scanner.getBundleDetails(bundleB.id, bundleB.type as 'directory');
+    const firstImageName = path.basename(details.pages[0]);
+    const imageDataByPath = await scanner.getImageDataByPath(bundleB.id, bundleB.type as 'directory', firstImageName);
+    expect(imageDataByPath).toBeInstanceOf(Buffer);
+    expect(imageDataByPath.length).toBeGreaterThanOrEqual(0);
   });
 });

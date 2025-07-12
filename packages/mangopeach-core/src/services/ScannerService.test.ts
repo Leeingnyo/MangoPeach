@@ -141,9 +141,100 @@ describe('ScannerService with MockFileSystemProvider', () => {
     expect(details).toBeInstanceOf(ImageBundleDetails);
     expect(details.id).toBe('/library/b.zip');
     expect(details.pages).toEqual([
-      path.join('/library/b.zip', 'page1.png'),
-      path.join('/library/b.zip', 'page2.png'),
-      path.join('/library/b.zip', 'page10.png'),
+      'page1.png',
+      'page2.png',
+      'page10.png',
     ]);
+  });
+
+  it('should extract image data from directory bundle by page index', async () => {
+    const fixture = {
+      '/library/a': ['1.jpg', '2.jpg', '10.jpg'],
+    };
+    const mockProvider = new MockFileSystemProvider(fixture);
+    const scanner = new ScannerService(mockProvider, []);
+
+    // Mock readFile to return a Buffer
+    jest.spyOn(mockProvider, 'readFile').mockResolvedValue(Buffer.from('fake-image-data'));
+
+    const imageData = await scanner.getImageData('/library/a', 'directory', 0);
+
+    expect(imageData).toBeInstanceOf(Buffer);
+    expect(mockProvider.readFile).toHaveBeenCalledWith('/library/a/1.jpg');
+  });
+
+  it('should extract image data from archive bundle by page index', async () => {
+    const fixture = {
+      '/library/b.zip': [],
+    };
+    const mockProvider = new MockFileSystemProvider(fixture);
+    const zipProvider = new ZipArchiveProvider();
+
+    jest.spyOn(zipProvider, 'getEntries').mockResolvedValue([
+      { name: 'page1.png', path: 'page1.png', isDirectory: false },
+      { name: 'page2.png', path: 'page2.png', isDirectory: false },
+      { name: 'page10.png', path: 'page10.png', isDirectory: false },
+    ]);
+    jest.spyOn(zipProvider, 'extractFile').mockResolvedValue(Buffer.from('fake-image-data'));
+
+    const scanner = new ScannerService(mockProvider, [zipProvider]);
+
+    const imageData = await scanner.getImageData('/library/b.zip', 'zip', 1);
+
+    expect(imageData).toBeInstanceOf(Buffer);
+    expect(zipProvider.extractFile).toHaveBeenCalledWith('/library/b.zip', 'page2.png');
+  });
+
+  it('should throw error for invalid page index', async () => {
+    const fixture = {
+      '/library/a': ['1.jpg', '2.jpg'],
+    };
+    const mockProvider = new MockFileSystemProvider(fixture);
+    const scanner = new ScannerService(mockProvider, []);
+
+    await expect(scanner.getImageData('/library/a', 'directory', 5)).rejects.toThrow('Page index 5 out of range');
+    await expect(scanner.getImageData('/library/a', 'directory', -1)).rejects.toThrow('Page index -1 out of range');
+  });
+
+  it('should extract image data from directory bundle by path', async () => {
+    const fixture = {
+      '/library/a': ['image1.png'],
+    };
+    const mockProvider = new MockFileSystemProvider(fixture);
+    const scanner = new ScannerService(mockProvider, []);
+
+    // Mock readFile to return a Buffer
+    jest.spyOn(mockProvider, 'readFile').mockResolvedValue(Buffer.from('fake-image-data'));
+
+    const imageData = await scanner.getImageDataByPath('/library/a', 'directory', 'image1.png');
+
+    expect(imageData).toBeInstanceOf(Buffer);
+    expect(mockProvider.readFile).toHaveBeenCalledWith('/library/a/image1.png');
+  });
+
+  it('should extract image data from archive bundle by path', async () => {
+    const fixture = {
+      '/library/b.zip': [],
+    };
+    const mockProvider = new MockFileSystemProvider(fixture);
+    const zipProvider = new ZipArchiveProvider();
+
+    jest.spyOn(zipProvider, 'extractFile').mockResolvedValue(Buffer.from('fake-image-data'));
+
+    const scanner = new ScannerService(mockProvider, [zipProvider]);
+
+    const imageData = await scanner.getImageDataByPath('/library/b.zip', 'zip', 'page1.png');
+
+    expect(imageData).toBeInstanceOf(Buffer);
+    expect(zipProvider.extractFile).toHaveBeenCalledWith('/library/b.zip', 'page1.png');
+  });
+
+  it('should throw error for unsupported archive type', async () => {
+    const fixture = {};
+    const mockProvider = new MockFileSystemProvider(fixture);
+    const scanner = new ScannerService(mockProvider, []);
+
+    await expect(scanner.getImageData('/library/test.rar', 'rar', 0)).rejects.toThrow('No archive provider found for type: rar');
+    await expect(scanner.getImageDataByPath('/library/test.rar', 'rar', 'page1.png')).rejects.toThrow('No archive provider found for type: rar');
   });
 });

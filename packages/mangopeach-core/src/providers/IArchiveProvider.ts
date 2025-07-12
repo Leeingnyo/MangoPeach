@@ -18,6 +18,13 @@ export interface IArchiveProvider {
   getEntries(filePath: string): Promise<ArchiveEntry[]>;
 
   /**
+   * Extracts a specific file from the archive and returns its content as a buffer.
+   * @param archivePath The path to the archive file.
+   * @param entryPath The path of the file inside the archive.
+   */
+  extractFile(archivePath: string, entryPath: string): Promise<Buffer>;
+
+  /**
    * Returns the specific type of the archive this provider handles.
    */
   getType(): 'zip' | 'rar' | '7z'; // Add more types as needed

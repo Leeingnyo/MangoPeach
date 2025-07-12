@@ -15,5 +15,6 @@ export interface FileSystemStat {
 export interface IFileSystemProvider {
   readdir(path: string): Promise<FileSystemEntry[]>;
   stat(path: string): Promise<FileSystemStat>;
-  // We can add more methods like exists(), readFile() etc. as needed.
+  readFile(path: string): Promise<Buffer>;
+  exists(path: string): Promise<boolean>;
 }

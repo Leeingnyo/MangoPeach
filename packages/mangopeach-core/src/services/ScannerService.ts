@@ -127,9 +127,57 @@ export class ScannerService {
         throw new Error(`No archive provider found for type: ${type}`);
       }
       const entries = await provider.getEntries(bundleId);
-      pages = entries.filter(e => !e.isDirectory && isImageFile(e.name)).map(e => path.join(bundleId, e.name));
+      pages = entries.filter(e => !e.isDirectory && isImageFile(e.name)).map(e => e.path);
     }
 
     return new ImageBundleDetails(bundleId, naturalSort(pages));
+  }
+
+  /**
+   * Extracts image data from a bundle at a specific page index
+   * @param bundleId The ID of the ImageBundleSummary (which is its path)
+   * @param type The type of the bundle ('directory' or archive type)
+   * @param pageIndex The index of the page to extract (0-based)
+   * @returns The image data as a Buffer
+   */
+  public async getImageData(bundleId: string, type: 'directory' | 'zip' | 'rar' | '7z', pageIndex: number): Promise<Buffer> {
+    const details = await this.getBundleDetails(bundleId, type);
+    
+    if (pageIndex < 0 || pageIndex >= details.pages.length) {
+      throw new Error(`Page index ${pageIndex} out of range (0-${details.pages.length - 1})`);
+    }
+
+    const imagePath = details.pages[pageIndex];
+
+    if (type === 'directory') {
+      return await this.fsProvider.readFile(imagePath);
+    } else {
+      const provider = this.archiveProviders.find(p => p.getType() === type);
+      if (!provider) {
+        throw new Error(`No archive provider found for type: ${type}`);
+      }
+      // For archives, imagePath is already the relative path within the archive
+      return await provider.extractFile(bundleId, imagePath);
+    }
+  }
+
+  /**
+   * Extracts image data from a bundle by image path
+   * @param bundleId The ID of the ImageBundleSummary (which is its path)
+   * @param type The type of the bundle ('directory' or archive type)
+   * @param imagePath The path to the image within the bundle
+   * @returns The image data as a Buffer
+   */
+  public async getImageDataByPath(bundleId: string, type: 'directory' | 'zip' | 'rar' | '7z', imagePath: string): Promise<Buffer> {
+    if (type === 'directory') {
+      const fullPath = path.join(bundleId, imagePath);
+      return await this.fsProvider.readFile(fullPath);
+    } else {
+      const provider = this.archiveProviders.find(p => p.getType() === type);
+      if (!provider) {
+        throw new Error(`No archive provider found for type: ${type}`);
+      }
+      return await provider.extractFile(bundleId, imagePath);
+    }
   }
 }

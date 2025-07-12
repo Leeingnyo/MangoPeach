@@ -49,4 +49,25 @@ export class MockFileSystemProvider implements IFileSystemProvider {
     }
     return Promise.reject(new Error(`ENOENT: no such file or directory, stat '${filePath}'`));
   }
+
+  readFile(filePath: string): Promise<Buffer> {
+    // Mock readFile - check if the file exists in our fixture
+    const exists = Array.from(this.fileSystem.values())
+      .flat()
+      .some(entry => entry.path === filePath && entry.isFile());
+
+    if (exists) {
+      return Promise.resolve(Buffer.from(`mock-content-of-${path.basename(filePath)}`));
+    }
+    return Promise.reject(new Error(`ENOENT: no such file or directory, open '${filePath}'`));
+  }
+
+  exists(filePath: string): Promise<boolean> {
+    const pathExists = this.stats.has(filePath) ||
+      Array.from(this.fileSystem.values())
+        .flat()
+        .some(entry => entry.path === filePath);
+
+    return Promise.resolve(pathExists);
+  }
 }

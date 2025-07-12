@@ -22,4 +22,17 @@ export class LocalFileSystemProvider implements IFileSystemProvider {
       size: stats.size,
     };
   }
+
+  public async readFile(filePath: string): Promise<Buffer> {
+    return await fs.readFile(filePath);
+  }
+
+  public async exists(filePath: string): Promise<boolean> {
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 }
