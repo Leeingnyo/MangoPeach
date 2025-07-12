@@ -3,10 +3,10 @@ import { getInitializedLibraryManager } from '@/lib/core';
 
 export async function GET(
   request: Request,
-  { params }: { params: { bundleId: string } }
+  { params }: { params: Promise<{ bundleId: string }> }
 ) {
   try {
-    const { bundleId } = params;
+    const { bundleId } = await params;
     const url = new URL(request.url);
     const libraryId = url.searchParams.get('libraryId');
     
@@ -58,11 +58,10 @@ export async function GET(
       );
     }
     
-    // Get detailed information about the bundle
-    const libraries = (manager as any).libraries;
-    const libraryEntry = libraries.get(libraryId);
+    // Get the scanner service for this library
+    const scanner = manager.getScannerService(libraryId);
     
-    if (!libraryEntry) {
+    if (!scanner) {
       return NextResponse.json(
         {
           success: false,
@@ -72,11 +71,9 @@ export async function GET(
       );
     }
     
-    const scanner = libraryEntry.scanner;
-    
     try {
       // Get detailed bundle information
-      const bundleDetails = await scanner.parseBundle(bundle.path, libraryId);
+      const bundleDetails = await scanner.getBundleDetails(bundle.path, bundle.type);
       
       return NextResponse.json({
         success: true,

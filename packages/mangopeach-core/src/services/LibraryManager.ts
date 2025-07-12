@@ -203,6 +203,11 @@ export class LibraryManager {
     return allLibraries;
   }
 
+  public getScannerService(libraryId: string): ScannerService | null {
+    const library = this.libraries.get(libraryId);
+    return library ? library.scanner : null;
+  }
+
   public getRecentlyDeleted(libraryId: string): ImageBundleSummary[] {
     return this.recentlyDeleted.get(libraryId) || [];
   }

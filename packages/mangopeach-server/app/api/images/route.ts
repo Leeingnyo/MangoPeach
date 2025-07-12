@@ -58,13 +58,10 @@ export async function GET(request: Request) {
       );
     }
     
-    // Get the scanner service from the library manager
-    // We need to access the scanner service through the library manager
-    // For now, let's use a workaround by getting it from the internal structure
-    const libraries = (manager as any).libraries;
-    const libraryEntry = libraries.get(libraryId);
+    // Get the scanner service for this library
+    const scanner = manager.getScannerService(libraryId);
     
-    if (!libraryEntry) {
+    if (!scanner) {
       return NextResponse.json(
         {
           success: false,
@@ -73,8 +70,6 @@ export async function GET(request: Request) {
         { status: 404 }
       );
     }
-    
-    const scanner = libraryEntry.scanner;
     let imageData: Buffer;
     
     if (imagePath) {
