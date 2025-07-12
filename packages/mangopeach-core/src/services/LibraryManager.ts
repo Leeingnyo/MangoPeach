@@ -56,6 +56,28 @@ export class LibraryManager {
         console.log(`No scan data found for ${libConfig.name}. Performing initial full scan...`);
         currentData = await scanner.parseLibrary(libConfig.path);
         await this.dataStore.saveLibraryData(libConfig.id, currentData);
+      } else {
+        console.log(`Existing scan data found for ${libConfig.name}. Scanning for changes...`);
+        // Always scan and compare with existing data
+        try {
+          const newData = await scanner.parseLibrary(libConfig.path);
+          const oldBundles = this.flattenBundles(currentData);
+          const newBundles = this.flattenBundles(newData);
+
+          // Simple comparison - if counts differ, update the data
+          if (oldBundles.length !== newBundles.length) {
+            console.log(`Library ${libConfig.name}: Bundle count changed (${oldBundles.length} -> ${newBundles.length}). Updating data...`);
+            currentData = newData;
+            await this.dataStore.saveLibraryData(libConfig.id, newData);
+          } else {
+            // TODO: More sophisticated comparison could be added here
+            // For now, we'll use the existing data but the scanner is still available for real-time operations
+            console.log(`Library ${libConfig.name}: No significant changes detected.`);
+          }
+        } catch (error) {
+          console.error(`Error scanning library ${libConfig.name}:`, error);
+          console.log(`Using existing scan data for ${libConfig.name}.`);
+        }
       }
 
       this.libraries.set(libConfig.id, {

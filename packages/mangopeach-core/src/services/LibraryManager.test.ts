@@ -74,18 +74,22 @@ describe('LibraryManager', () => {
       expect(data).toBe(initialScanResult);
     });
 
-    it('should load existing data if found', async () => {
+    it('should load existing data and scan for changes', async () => {
         // Arrange
         const existingData = new ImageBundleGroup(testLib.id, 'existing', testLib.path, testLib.id);
+        const newScanData = new ImageBundleGroup(testLib.id, 'new-scan', testLib.path, testLib.id);
+
         mockDataStore.getAllLibraries.mockResolvedValue([testLib]);
         mockDataStore.getLibraryData.mockResolvedValue(existingData);
-  
+        mockScannerService.parseLibrary.mockResolvedValue(newScanData);
+
         // Act
         await libraryManager.initialize();
-  
+
         // Assert
         expect(mockDataStore.getLibraryData).toHaveBeenCalledWith(testLib.id);
-        expect(mockScannerService.parseLibrary).not.toHaveBeenCalled();
+        expect(mockScannerService.parseLibrary).toHaveBeenCalledWith(testLib.path);
+        // Since both have same bundle count (0), existing data should be kept
         expect(mockDataStore.saveLibraryData).not.toHaveBeenCalled();
         const data = await libraryManager.getLibraryData(testLib.id);
         expect(data).toBe(existingData);
@@ -105,6 +109,10 @@ describe('LibraryManager', () => {
 
       mockDataStore.getAllLibraries.mockResolvedValue([testLib]);
       mockDataStore.getLibraryData.mockResolvedValue(oldData);
+
+      // Mock the initial scan during initialize to return the same data (no changes)
+      mockScannerService.parseLibrary.mockResolvedValue(oldData);
+
       await libraryManager.initialize();
     });
 
