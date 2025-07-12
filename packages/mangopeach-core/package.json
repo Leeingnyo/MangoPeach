@@ -17,6 +17,7 @@
     "@types/node": "^20",
     "@types/node-cron": "^3.0.11",
     "@types/unzipper": "^0.10.11",
+    "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.36.0",
     "@typescript-eslint/parser": "^8.36.0",
     "eslint": "^8",
@@ -28,6 +29,7 @@
   "dependencies": {
     "@prisma/client": "^6.11.1",
     "node-cron": "^4.2.0",
-    "unzipper": "^0.12.3"
+    "unzipper": "^0.12.3",
+    "uuid": "^11.1.0"
   }
 }
