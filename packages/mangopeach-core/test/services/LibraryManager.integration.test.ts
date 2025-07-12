@@ -43,7 +43,7 @@ describe('LibraryManager (Integration Test with MemoryDataStore)', () => {
 
     // Act
     await libraryManager.initialize();
-    const configs = await libraryManager.getAllLibraryConfigs();
+    const configs = await libraryManager.getAllLibraries();
 
     // Assert
     expect(configs).toHaveLength(0);
@@ -65,7 +65,7 @@ describe('LibraryManager (Integration Test with MemoryDataStore)', () => {
 
     await libraryManager.initialize();
 
-    const loadedLibConfigs = await libraryManager.getAllLibraryConfigs();
+    const loadedLibConfigs = await libraryManager.getAllLibraries();
     expect(loadedLibConfigs).toHaveLength(1);
     expect(loadedLibConfigs[0].name).toBe('Test Library 1');
     expect(loadedLibConfigs[0].path).toBe(libraryPath);
@@ -120,7 +120,7 @@ describe('LibraryManager (Integration Test with MemoryDataStore)', () => {
     // Initialize LibraryManager, which should load the existing data
     await libraryManager.initialize();
 
-    const loadedLibConfigs = await libraryManager.getAllLibraryConfigs();
+    const loadedLibConfigs = await libraryManager.getAllLibraries();
     expect(loadedLibConfigs).toHaveLength(1);
     expect(scannerSpy).toHaveBeenCalled(); // Now we always scan to check for changes
 

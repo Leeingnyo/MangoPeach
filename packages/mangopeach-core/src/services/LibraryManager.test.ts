@@ -59,7 +59,7 @@ describe('LibraryManager', () => {
 
     // Setup default mock job for cron.schedule
     const mockJob = { stop: jest.fn() };
-    MockedCron.schedule.mockReturnValue(mockJob as any);
+    MockedCron.schedule.mockReturnValue(mockJob as unknown as cron.ScheduledTask);
 
     // Setup mock instances
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -150,13 +150,13 @@ describe('LibraryManager', () => {
       });
   });
 
-  describe('getAllLibraryConfigs', () => {
+  describe('getAllLibraries', () => {
     it('should return libraries from data store', async () => {
       // Arrange
       mockDataStore.getAllLibraries.mockResolvedValue([testLib]);
 
       // Act
-      const result = await libraryManager.getAllLibraryConfigs();
+      const result = await libraryManager.getAllLibraries();
 
       // Assert
       expect(mockDataStore.getAllLibraries).toHaveBeenCalledTimes(1);
@@ -168,7 +168,7 @@ describe('LibraryManager', () => {
       mockDataStore.getAllLibraries.mockResolvedValue([]);
 
       // Act
-      const result = await libraryManager.getAllLibraryConfigs();
+      const result = await libraryManager.getAllLibraries();
 
       // Assert
       expect(result).toEqual([]);

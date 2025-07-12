@@ -198,7 +198,7 @@ export class LibraryManager {
     return await this.dataStore.getLibraryData(libraryId);
   }
 
-  public async getAllLibraryConfigs(): Promise<Library[]> {
+  public async getAllLibraries(): Promise<Library[]> {
     const allLibraries = await this.dataStore.getAllLibraries();
     return allLibraries;
   }
