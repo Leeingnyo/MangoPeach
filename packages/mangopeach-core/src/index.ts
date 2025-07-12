@@ -15,10 +15,11 @@ export function createConfigService(dataPath?: string): ServerConfigService {
 /**
  * Creates an instance of LibraryManager.
  * @param dataStore An instance of ILibraryStore.
+ * @param configService An instance of ServerConfigService.
  * @returns A new instance of LibraryManager.
  */
-export function createLibraryManager(dataStore: ILibraryStore): LibraryManager {
-  return new LibraryManager(dataStore);
+export function createLibraryManager(dataStore: ILibraryStore, configService: ServerConfigService): LibraryManager {
+  return new LibraryManager(dataStore, configService);
 }
 
 // Also export the types for convenience

@@ -22,7 +22,7 @@ function initializeSingleton() {
 
   const configService = createConfigService();
   const dataStore = new MemoryDataStore();
-  const libraryManager = createLibraryManager(dataStore);
+  const libraryManager = createLibraryManager(dataStore, configService);
 
   const initializeCore = async () => {
     console.log('Initializing MangoPeach Core...');

@@ -1,6 +1,6 @@
-import { Library } from './Library';
+import { LibraryConfig } from './LibraryConfig';
 
 export interface ServerConfig {
-  libraries: Library[];
+  libraries: LibraryConfig[];
   dataStoragePath: string;
 }
