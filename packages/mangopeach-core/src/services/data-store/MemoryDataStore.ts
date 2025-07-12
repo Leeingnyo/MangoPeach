@@ -2,7 +2,7 @@
 import { Library } from '../../models/Library';
 import { ImageBundleGroup } from '../../models/ImageBundleGroup';
 import { ILibraryStore } from './ILibraryStore';
-import { randomUUID } from 'crypto';
+import * as crypto from 'crypto';
 
 /**
  * An in-memory implementation of the ILibraryStore for testing and development.
@@ -10,6 +10,11 @@ import { randomUUID } from 'crypto';
 export class MemoryDataStore implements ILibraryStore {
   private libraries = new Map<string, Library>();
   private scanData = new Map<string, ImageBundleGroup>();
+
+  private generateLibraryId(directoryId?: string, fallbackPath?: string): string {
+    const input = directoryId || fallbackPath || 'unknown';
+    return crypto.createHash('sha256').update(input).digest('hex').substring(0, 12);
+  }
 
   public async getAllLibraries(): Promise<Library[]> {
     return Array.from(this.libraries.values());
@@ -20,9 +25,10 @@ export class MemoryDataStore implements ILibraryStore {
   }
 
   public async createLibrary(libraryData: Omit<Library, 'id' | 'createdAt' | 'updatedAt'>): Promise<Library> {
+    const libraryId = this.generateLibraryId(libraryData.directoryId, libraryData.path);
     const newLibrary: Library = {
       ...libraryData,
-      id: randomUUID(),
+      id: libraryId,
       createdAt: new Date(),
       updatedAt: new Date(),
     };

@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { v4 as uuidv4 } from 'uuid';
+import * as crypto from 'crypto';
 import { ImageBundleSummary } from '../models/ImageBundleSummary';
 import { ImageBundleDetails } from '../models/ImageBundleDetails';
 import { ImageBundleGroup } from '../models/ImageBundleGroup';
@@ -17,10 +17,18 @@ export class ScannerService {
     this.archiveProviders = archiveProviders;
   }
 
+  private generateBundleId(libraryId: string, fileId?: string, fallbackPath?: string): string {
+    const input = fileId 
+      ? `${libraryId}:${fileId}`
+      : `${libraryId}:${fallbackPath}`;
+    return crypto.createHash('sha256').update(input).digest('hex').substring(0, 12);
+  }
+
   public async parseLibrary(libraryPath: string): Promise<ImageBundleGroup> {
     const libraryId = libraryPath;
     const libraryName = path.basename(libraryPath);
-    const rootGroup = new ImageBundleGroup(libraryId, libraryName, libraryPath, libraryId);
+    const rootGroupId = this.generateBundleId(libraryId, undefined, libraryPath);
+    const rootGroup = new ImageBundleGroup(rootGroupId, libraryName, libraryPath, libraryId);
 
     const items = await this.parsePath(libraryPath, libraryId);
 
@@ -51,8 +59,9 @@ export class ScannerService {
           const stats = await this.fsProvider.stat(entryPath);
           const dirEntries = await this.fsProvider.readdir(entryPath);
           const imageFiles = dirEntries.filter(e => e.isFile() && isImageFile(e.name));
+          const bundleId = this.generateBundleId(libraryId, stats.fileId, entryPath);
           const bundle = new ImageBundleSummary(
-            uuidv4(),
+            bundleId,
             'directory',
             entry.name,
             entryPath,
@@ -65,7 +74,9 @@ export class ScannerService {
         }
 
         if (subItems.length > 0) {
-          const group = new ImageBundleGroup(uuidv4(), entry.name, entryPath, libraryId);
+          const stats = await this.fsProvider.stat(entryPath);
+          const groupId = this.generateBundleId(libraryId, stats.fileId, entryPath);
+          const group = new ImageBundleGroup(groupId, entry.name, entryPath, libraryId);
           group.bundles = subItems.filter((item): item is ImageBundleSummary => item instanceof ImageBundleSummary);
           group.subGroups = subItems.filter((item): item is ImageBundleGroup => item instanceof ImageBundleGroup);
           results.push(group);
@@ -98,8 +109,9 @@ export class ScannerService {
     const imageEntries = entries.filter(e => !e.isDirectory && isImageFile(e.name));
     const stats = await this.fsProvider.stat(archivePath);
 
+    const bundleId = this.generateBundleId(libraryId, stats.fileId, archivePath);
     return new ImageBundleSummary(
-      uuidv4(),
+      bundleId,
       provider.getType(),
       path.basename(archivePath),
       archivePath,
