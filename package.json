@@ -12,8 +12,11 @@
     "core:lint": "cd packages/mangopeach-core && yarn lint",
     "core:db:generate": "yarn workspace mangopeach-core run db:generate",
     "core:db:migrate": "yarn workspace mangopeach-core run db:migrate",
-    "server:dev": "cd packages/mangopeach-ui && yarn dev",
-    "server:build": "cd packages/mangopeach-ui && yarn build",
-    "server:start": "cd packages/mangopeach-ui && yarn start"
+    "ui:dev": "cd packages/mangopeach-ui && yarn dev",
+    "ui:build": "cd packages/mangopeach-ui && yarn build",
+    "ui:start": "cd packages/mangopeach-ui && yarn start",
+    "server:dev": "cd packages/mangopeach-server && yarn start:dev",
+    "server:build": "cd packages/mangopeach-server && yarn build",
+    "server:start": "cd packages/mangopeach-server && yarn start"
   }
 }

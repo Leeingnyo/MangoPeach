@@ -10,6 +10,7 @@
     "paths": {
       "mangopeach-core/*": ["packages/mangopeach-core/*"],
       "mangopeach-server/*": ["packages/mangopeach-server/*"],
+      "mangopeach-ui/*": ["packages/mangopeach-ui/*"],
     },
   },
   "include": ["packages/**/*"],
