@@ -68,12 +68,13 @@ describe('LibraryManager (Integration Test with MemoryDataStore)', () => {
     expect(loadedLibConfigs[0].name).toBe('Test Library 1');
     expect(loadedLibConfigs[0].path).toBe(libraryPath);
 
-    const { groups } = await libraryManager.getLibraryData(loadedLibConfigs[0].id);
-    expect(groups).toHaveLength(1);
+    const { groups: groupsInRoot, bundles: bundlesInRoot } = await libraryManager.getLibraryData(loadedLibConfigs[0].id);
+    expect(groupsInRoot).toHaveLength(1); // group a
+    expect(bundlesInRoot).toHaveLength(1); // bundle a
     
-    const rootGroup = groups[0];
-    const { bundles } = await libraryManager.getLibraryData(loadedLibConfigs[0].id, rootGroup.id);
-    expect(bundles).toHaveLength(1);
+    const aGroup = groupsInRoot[0]; // This is the 'a' group inside simple-library
+    const { bundles } = await libraryManager.getLibraryData(loadedLibConfigs[0].id, aGroup.id);
+    expect(bundles).toHaveLength(2); // 'b' folder and 'c.zip' file
   });
 
   it('should load existing scan data for a library from the data store', async () => {
@@ -109,12 +110,13 @@ describe('LibraryManager (Integration Test with MemoryDataStore)', () => {
     expect(loadedLibConfigs).toHaveLength(1);
     expect(scannerSpy).not.toHaveBeenCalled();
 
-    const { groups } = await libraryManager.getLibraryData(loadedLibConfigs[0].id);
-    expect(groups).toHaveLength(1);
+    const { groups: groupsInRoot, bundles: bundlesInRoot } = await libraryManager.getLibraryData(loadedLibConfigs[0].id);
+    expect(groupsInRoot).toHaveLength(1); // group a
+    expect(bundlesInRoot).toHaveLength(1); // bundle a
     
-    const rootGroup = groups[0];
-    const { bundles } = await libraryManager.getLibraryData(loadedLibConfigs[0].id, rootGroup.id);
-    expect(bundles).toHaveLength(1);
+    const aGroup = groupsInRoot[0]; // This is the 'a' group inside simple-library
+    const { bundles } = await libraryManager.getLibraryData(loadedLibConfigs[0].id, aGroup.id);
+    expect(bundles).toHaveLength(2); // 'b' folder and 'c.zip' file
 
     scannerSpy.mockRestore();
   });

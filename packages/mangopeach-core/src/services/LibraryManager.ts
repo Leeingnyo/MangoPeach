@@ -148,6 +148,23 @@ export class LibraryManager {
   }
 
   public async getLibraryData(libraryId: string, parentId?: string) {
+    // If no parentId specified, we want contents of the root group, not the root group itself
+    if (parentId === undefined) {
+      // Find the root group (the one with parentId === undefined)
+      const rootGroups = await this.dataStore.getGroups(libraryId, undefined);
+      const rootGroup = rootGroups[0]; // Should be exactly one root group
+      
+      if (!rootGroup) {
+        return { groups: [], bundles: [] };
+      }
+      
+      // Return contents of the root group
+      const groups = await this.dataStore.getGroups(libraryId, rootGroup.id);
+      const bundles = await this.dataStore.getBundles(libraryId, rootGroup.id);
+      return { groups, bundles };
+    }
+    
+    // For specific parentId, return its contents normally
     const groups = await this.dataStore.getGroups(libraryId, parentId);
     const bundles = await this.dataStore.getBundles(libraryId, parentId);
     return { groups, bundles };
