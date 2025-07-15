@@ -7,6 +7,7 @@ import { ImageBundleSummary } from '../models/ImageBundleSummary';
 import { ServerConfig } from '../models/ServerConfig';
 import * as cron from 'node-cron';
 import { ILibraryStore } from './data-store/ILibraryStore';
+import { IFileSystemProvider } from '../providers/IFileSystemProvider';
 
 // Mocking the dependencies
 jest.mock('./ScannerService');
