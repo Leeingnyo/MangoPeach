@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Param,
+  Query,
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
@@ -33,9 +34,12 @@ export class LibrariesController {
   }
 
   @Get(':libraryId')
-  async getLibraryData(@Param('libraryId') libraryId: string) {
+  async getLibraryData(
+    @Param('libraryId') libraryId: string,
+    @Query('parentId') parentId?: string,
+  ) {
     try {
-      const libraryData = await this.librariesService.getLibraryData(libraryId);
+      const libraryData = await this.librariesService.getLibraryData(libraryId, parentId);
 
       if (!libraryData) {
         throw new HttpException(

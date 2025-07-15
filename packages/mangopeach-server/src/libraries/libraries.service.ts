@@ -34,9 +34,9 @@ export class LibrariesService implements OnModuleInit {
     return await manager.getAllLibraries();
   }
 
-  async getLibraryData(libraryId: string) {
+  async getLibraryData(libraryId: string, parentId?: string) {
     const manager = await this.getInitializedLibraryManager();
-    return await manager.getLibraryData(libraryId);
+    return await manager.getLibraryData(libraryId, parentId);
   }
 
   async rescanLibrary(libraryId: string) {
