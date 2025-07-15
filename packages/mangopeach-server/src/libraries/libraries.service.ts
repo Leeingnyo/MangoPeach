@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { createLibraryManager, createConfigService } from 'mangopeach-core';
-import { MemoryDataStore } from 'mangopeach-core/src/services/data-store/MemoryDataStore.js';
+import { MemoryDataStore } from 'mangopeach-core/dist/src/services/data-store/MemoryDataStore';
 import type { LibraryManager } from 'mangopeach-core';
 
 @Injectable()
 export class LibrariesService {
-  private libraryManager: LibraryManager;
+  private libraryManager!: LibraryManager;
 
   async getInitializedLibraryManager(): Promise<LibraryManager> {
     if (!this.libraryManager) {
