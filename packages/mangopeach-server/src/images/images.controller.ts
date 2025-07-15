@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Param,
   Query,
   HttpException,
   HttpStatus,
@@ -9,57 +10,97 @@ import {
 import type { Response } from 'express';
 import { LibrariesService } from '../libraries/libraries.service';
 
-@Controller('images')
+@Controller('libraries/:libraryId/bundles/:bundleId/images')
 export class ImagesController {
   constructor(private readonly librariesService: LibrariesService) {}
 
-  @Get()
-  async getImage(
-    @Query('libraryId') libraryId: string,
-    @Query('bundleId') bundleId: string,
-    @Query('type') bundleType: 'directory' | 'zip' | 'rar' | '7z',
-    @Query('pageIndex') pageIndexParam: string,
-    @Query('imagePath') imagePath: string,
+  @Get(':imageId')
+  async getImageById(
+    @Param('libraryId') libraryId: string,
+    @Param('bundleId') bundleId: string,
+    @Param('imageId') imageId: string,
     @Res() res: Response,
   ) {
     try {
-      if (!libraryId || !bundleId || !bundleType) {
+      // Parse imageId as pageIndex (for now, keeping it simple)
+      const pageIndex = parseInt(imageId, 10);
+      if (isNaN(pageIndex) || pageIndex < 0) {
         throw new HttpException(
           {
             success: false,
-            error: 'Missing required parameters: libraryId, bundleId, type',
+            error: 'Invalid imageId - must be a valid page index',
           },
           HttpStatus.BAD_REQUEST,
         );
       }
 
-      const libraryData = await this.librariesService.getLibraryData(libraryId);
+      return this.getImageInternal(libraryId, bundleId, pageIndex, undefined, res);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      console.error('Error serving image by ID:', error);
+      throw new HttpException(
+        {
+          success: false,
+          error: 'Failed to serve image',
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 
-      if (!libraryData) {
-        throw new HttpException(
-          {
-            success: false,
-            error: 'Library not found',
-          },
-          HttpStatus.NOT_FOUND,
-        );
+  @Get()
+  async getImage(
+    @Param('libraryId') libraryId: string,
+    @Param('bundleId') bundleId: string,
+    @Query('pageIndex') pageIndexParam: string,
+    @Query('imagePath') imagePath: string,
+    @Res() res: Response,
+  ) {
+    try {
+      let pageIndex: number | undefined;
+      
+      if (pageIndexParam !== null && pageIndexParam !== undefined) {
+        pageIndex = parseInt(pageIndexParam, 10);
+        if (isNaN(pageIndex) || pageIndex < 0) {
+          throw new HttpException(
+            {
+              success: false,
+              error: 'Invalid pageIndex',
+            },
+            HttpStatus.BAD_REQUEST,
+          );
+        }
       }
 
-      // Find the bundle in the library data
-      const findBundle = (group: any): any => {
-        // Check bundles in current group
-        const bundle = group.bundles.find((b: any) => b.id === bundleId);
-        if (bundle) return bundle;
+      return this.getImageInternal(libraryId, bundleId, pageIndex, imagePath, res);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      console.error('Error serving image:', error);
+      throw new HttpException(
+        {
+          success: false,
+          error: 'Failed to serve image',
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 
-        // Check subgroups recursively
-        for (const subGroup of group.subGroups) {
-          const found = findBundle(subGroup);
-          if (found) return found;
-        }
-        return null;
-      };
-
-      const bundle = findBundle(libraryData);
+  private async getImageInternal(
+    libraryId: string,
+    bundleId: string,
+    pageIndex: number | undefined,
+    imagePath: string | undefined,
+    res: Response,
+  ) {
+    try {
+      // Get the bundle directly since we have the bundleId from the path
+      const bundle = await this.librariesService.getBundle(bundleId);
+      
       if (!bundle) {
         throw new HttpException(
           {
@@ -67,6 +108,17 @@ export class ImagesController {
             error: 'Bundle not found',
           },
           HttpStatus.NOT_FOUND,
+        );
+      }
+
+      // Validate that the bundle belongs to the specified library
+      if (bundle.libraryId !== libraryId) {
+        throw new HttpException(
+          {
+            success: false,
+            error: `Bundle ${bundleId} does not belong to library ${libraryId}`,
+          },
+          HttpStatus.BAD_REQUEST,
         );
       }
 
@@ -88,18 +140,8 @@ export class ImagesController {
       if (imagePath) {
         // Get image by specific path
         imageData = await scanner.getImageDataByPath(bundle.id, imagePath);
-      } else if (pageIndexParam !== null && pageIndexParam !== undefined) {
+      } else if (pageIndex !== undefined) {
         // Get image by page index
-        const pageIndex = parseInt(pageIndexParam, 10);
-        if (isNaN(pageIndex) || pageIndex < 0) {
-          throw new HttpException(
-            {
-              success: false,
-              error: 'Invalid pageIndex',
-            },
-            HttpStatus.BAD_REQUEST,
-          );
-        }
         imageData = await scanner.getImageData(bundle.id, pageIndex);
       } else {
         throw new HttpException(

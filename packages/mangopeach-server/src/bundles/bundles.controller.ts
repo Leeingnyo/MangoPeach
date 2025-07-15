@@ -7,12 +7,15 @@ import {
 } from '@nestjs/common';
 import { LibrariesService } from '../libraries/libraries.service';
 
-@Controller('bundles')
+@Controller('libraries/:libraryId/bundles')
 export class BundlesController {
   constructor(private readonly librariesService: LibrariesService) {}
 
   @Get(':bundleId')
-  async getBundleDetails(@Param('bundleId') bundleId: string) {
+  async getBundleDetails(
+    @Param('libraryId') libraryId: string,
+    @Param('bundleId') bundleId: string,
+  ) {
     try {
       const bundle = await this.librariesService.getBundle(bundleId);
 
@@ -20,6 +23,14 @@ export class BundlesController {
         throw new HttpException(
           { success: false, error: `Bundle with ID ${bundleId} not found` },
           HttpStatus.NOT_FOUND,
+        );
+      }
+
+      // Validate that the bundle belongs to the specified library
+      if (bundle.libraryId !== libraryId) {
+        throw new HttpException(
+          { success: false, error: `Bundle ${bundleId} does not belong to library ${libraryId}` },
+          HttpStatus.BAD_REQUEST,
         );
       }
 
