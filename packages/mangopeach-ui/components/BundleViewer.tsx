@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
@@ -41,6 +41,7 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
   const [showControls, setShowControls] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [loadedImages, setLoadedImages] = useState<Set<number>>(new Set());
+  const [scrollPending, setScrollPending] = useState(false);
   
   const viewerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -192,14 +193,23 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
   };
 
   const scrollToPage = (pageNumber: number) => {
+    setCurrentPage(pageNumber);
+    setScrollPending(true);
+  };
+
+  useLayoutEffect(() => {
+    if (!scrollPending) return;
+    setScrollPending(false);
+
+    requestAnimationFrame(() => {
     if (!scrollContainerRef.current) return;
-    
-    const imageElement = scrollContainerRef.current.querySelector(`[data-page="${pageNumber}"]`);
+
+    const imageElement = scrollContainerRef.current.querySelector(`[data-page="${currentPage}"]`);
     if (imageElement) {
       imageElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-    setCurrentPage(pageNumber);
-  };
+    });
+  }, [scrollPending, currentPage]);
 
   // Load images around current page for virtual scrolling
   const getImagesToLoad = (centerPage: number, totalImages: number): Set<number> => {
@@ -222,12 +232,14 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
   }, [currentPage, images]);
 
   // Initialize with first page loaded
+  /*
   useEffect(() => {
     if (images && images.length > 0) {
       const initialLoadedImages = getImagesToLoad(0, images.length);
       setLoadedImages(initialLoadedImages);
     }
   }, [images]);
+  */
 
   // Intersection Observer to track current page in scroll mode
   useEffect(() => {
