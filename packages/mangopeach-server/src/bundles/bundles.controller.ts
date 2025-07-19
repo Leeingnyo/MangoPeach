@@ -52,7 +52,10 @@ export class BundlesController {
 
       return {
         success: true,
-        data: bundleDetails,
+        data: {
+          bundle: bundle,
+          images: bundleDetails.pages,
+        },
       };
     } catch (error) {
       if (error instanceof HttpException) {

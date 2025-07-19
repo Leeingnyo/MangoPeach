@@ -2,7 +2,7 @@
  * API utility functions for MangoPeach UI
  */
 
-export const API_BASE_URL = process.env.API_SERVER_BASE_URL || 'http://localhost:5000';
+export const API_BASE_URL = process.env.API_SERVER_BASE_URL || 'http://localhost:4000';
 
 /**
  * Create a full API URL from a relative path
@@ -57,7 +57,7 @@ export const api = {
   },
   bundles: {
     get: (libraryId: string, bundleId: string) => 
-      apiRequest(`/libraries/${libraryId}/bundles/${bundleId}`),
+      apiRequest<any>(`/libraries/${libraryId}/bundles/${bundleId}`),
   },
   images: {
     url: (libraryId: string, bundleId: string, imageId: string) =>
