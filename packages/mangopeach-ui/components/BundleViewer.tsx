@@ -1,9 +1,10 @@
+/* eslint-disable @next/next/no-img-element */
 'use client';
 
-import { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { useReaderConfig, type ViewMode, type FitMode, type PageDirection } from '@/lib/readerConfig';
+import { useReaderConfig, type ViewMode, type FitMode, type PageDirection, type DualPageLayout } from '@/lib/readerConfig';
 
 interface Bundle {
   id: string;
@@ -36,8 +37,8 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
   const { bundle, images = [] } = bundleDetails || {};
   
   // Reader configuration with localStorage persistence
-  const { config, setViewMode, setFitMode, setPageDirection } = useReaderConfig();
-  const { viewMode, fitMode, pageDirection } = config;
+  const { config, setViewMode, setFitMode, setPageDirection, setDualPageLayout } = useReaderConfig();
+  const { viewMode, fitMode, pageDirection, dualPageLayout } = config;
   
   const [currentPage, setCurrentPage] = useState(0);
   const [showControls, setShowControls] = useState(true);
@@ -70,7 +71,7 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
         clearTimeout(controlsTimeoutRef.current);
       }
     };
-  }, [currentPage, viewMode, fitMode]);
+  }, [currentPage, viewMode, fitMode, pageDirection, dualPageLayout]);
 
   const resetControlsTimer = () => {
     setShowControls(true);
@@ -82,76 +83,6 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
     }, 3000);
   };
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    if (!images || images.length === 0) return;
-
-    const handleKeyPress = (e: KeyboardEvent) => {
-      resetControlsTimer(); // Show controls on keyboard interaction
-      
-      switch (e.key) {
-        case 'ArrowLeft':
-        case 'a':
-          // Respect page direction: LTR = left goes back, RTL = left goes forward
-          const goBack = pageDirection === 'ltr';
-          if (viewMode === 'page') {
-            if (goBack && currentPage > 0) {
-              setCurrentPage(currentPage - 1);
-            } else if (!goBack && currentPage < images.length - 1) {
-              setCurrentPage(currentPage + 1);
-            }
-          } else if (viewMode === 'scroll') {
-            const targetPage = goBack 
-              ? (currentPage > 0 ? currentPage - 1 : 0)
-              : (currentPage < images.length - 1 ? currentPage + 1 : images.length - 1);
-            scrollToPage(targetPage);
-          }
-          break;
-        case 'ArrowRight':
-        case 'd':
-          // Respect page direction: LTR = right goes forward, RTL = right goes back
-          const goForward = pageDirection === 'ltr';
-          if (viewMode === 'page') {
-            if (goForward && currentPage < images.length - 1) {
-              setCurrentPage(currentPage + 1);
-            } else if (!goForward && currentPage > 0) {
-              setCurrentPage(currentPage - 1);
-            }
-          } else if (viewMode === 'scroll') {
-            const targetPage = goForward 
-              ? (currentPage < images.length - 1 ? currentPage + 1 : images.length - 1)
-              : (currentPage > 0 ? currentPage - 1 : 0);
-            scrollToPage(targetPage);
-          }
-          break;
-        case 'Home':
-          if (viewMode === 'page') {
-            setCurrentPage(0);
-          } else if (viewMode === 'scroll') {
-            scrollToPage(0);
-          }
-          break;
-        case 'End':
-          if (viewMode === 'page') {
-            setCurrentPage(images.length - 1);
-          } else if (viewMode === 'scroll') {
-            scrollToPage(images.length - 1);
-          }
-          break;
-        case 'f':
-          toggleFullscreen();
-          break;
-        case 'Escape':
-          if (isFullscreen) {
-            exitFullscreen();
-          }
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentPage, images, isFullscreen, viewMode, pageDirection]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -175,7 +106,7 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
       case 'fit-width':
         return 'w-full h-auto';
       case 'fit-height':
-        return 'h-full w-auto';
+        return 'h-full w-auto object-contain';
       case 'fit-both':
         return 'w-full h-full object-contain';
       case 'original':
@@ -189,17 +120,161 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
     return api.images.urlByIndex(libraryId, bundleId, pageIndex);
   };
 
-  const goToPreviousPage = () => {
-    if (currentPage > 0) {
-      setCurrentPage(currentPage - 1);
+  // Dual page helper functions
+  const getDualPageIndices = useCallback((currentPageIndex: number): number[] => {
+    if (!images || images.length === 0) return [];
+    
+    if (dualPageLayout === 'offset') {
+      // Offset: (0), (1, 2), (3, 4), (5, 6)...
+      if (currentPageIndex === 0) return [0];
+      
+      const pairIndex = Math.floor((currentPageIndex - 1) / 2);
+      const leftPage = 1 + (pairIndex * 2);
+      const rightPage = leftPage + 1;
+      
+      return rightPage < images.length ? [leftPage, rightPage] : [leftPage];
+    } else {
+      // Standard: (0, 1), (2, 3), (4, 5)...
+      const pairIndex = Math.floor(currentPageIndex / 2);
+      const leftPage = pairIndex * 2;
+      const rightPage = leftPage + 1;
+      
+      return rightPage < images.length ? [leftPage, rightPage] : [leftPage];
     }
-  };
+  }, [images, dualPageLayout]);
 
-  const goToNextPage = () => {
-    if (images && currentPage < images.length - 1) {
-      setCurrentPage(currentPage + 1);
+  const getNextDualPageIndex = useCallback((currentPageIndex: number): number => {
+    if (!images || images.length === 0) return currentPageIndex;
+    
+    if (dualPageLayout === 'offset') {
+      if (currentPageIndex === 0) return 1; // From first single page to first pair
+      
+      const pairIndex = Math.floor((currentPageIndex - 1) / 2);
+      const nextPairStart = 1 + ((pairIndex + 1) * 2);
+      
+      return Math.min(nextPairStart, images.length - 1);
+    } else {
+      const pairIndex = Math.floor(currentPageIndex / 2);
+      const nextPairStart = (pairIndex + 1) * 2;
+      
+      return Math.min(nextPairStart, images.length - 1);
     }
-  };
+  }, [images, dualPageLayout]);
+
+  const getPrevDualPageIndex = useCallback((currentPageIndex: number): number => {
+    if (!images || images.length === 0) return currentPageIndex;
+    
+    if (dualPageLayout === 'offset') {
+      if (currentPageIndex <= 1) return 0; // To first single page
+      
+      const pairIndex = Math.floor((currentPageIndex - 1) / 2);
+      const prevPairStart = Math.max(1, 1 + ((pairIndex - 1) * 2));
+      
+      return prevPairStart;
+    } else {
+      const pairIndex = Math.floor(currentPageIndex / 2);
+      const prevPairStart = Math.max(0, (pairIndex - 1) * 2);
+      
+      return prevPairStart;
+    }
+  }, [images, dualPageLayout]);
+
+  const goToPreviousPage = useCallback(() => {
+    if (viewMode === 'dual-page') {
+      const prevIndex = getPrevDualPageIndex(currentPage);
+      if (prevIndex !== currentPage) {
+        setCurrentPage(prevIndex);
+      }
+    } else {
+      if (currentPage > 0) {
+        setCurrentPage(currentPage - 1);
+      }
+    }
+  }, [viewMode, currentPage, getPrevDualPageIndex]);
+
+  const goToNextPage = useCallback(() => {
+    if (viewMode === 'dual-page') {
+      const nextIndex = getNextDualPageIndex(currentPage);
+      if (nextIndex !== currentPage) {
+        setCurrentPage(nextIndex);
+      }
+    } else {
+      if (images && currentPage < images.length - 1) {
+        setCurrentPage(currentPage + 1);
+      }
+    }
+  }, [viewMode, currentPage, images, getNextDualPageIndex]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    if (!images || images.length === 0) return;
+
+    const handleKeyPress = (e: KeyboardEvent) => {
+      resetControlsTimer(); // Show controls on keyboard interaction
+      
+      switch (e.key) {
+        case 'ArrowLeft':
+        case 'a':
+          // Respect page direction: LTR = left goes back, RTL = left goes forward
+          const goBack = pageDirection === 'ltr';
+          if (viewMode === 'page' || viewMode === 'dual-page') {
+            if (goBack) {
+              goToPreviousPage();
+            } else {
+              goToNextPage();
+            }
+          } else if (viewMode === 'scroll') {
+            const targetPage = goBack 
+              ? (currentPage > 0 ? currentPage - 1 : 0)
+              : (currentPage < images.length - 1 ? currentPage + 1 : images.length - 1);
+            scrollToPage(targetPage);
+          }
+          break;
+        case 'ArrowRight':
+        case 'd':
+          // Respect page direction: LTR = right goes forward, RTL = right goes back
+          const goForward = pageDirection === 'ltr';
+          if (viewMode === 'page' || viewMode === 'dual-page') {
+            if (goForward) {
+              goToNextPage();
+            } else {
+              goToPreviousPage();
+            }
+          } else if (viewMode === 'scroll') {
+            const targetPage = goForward 
+              ? (currentPage < images.length - 1 ? currentPage + 1 : images.length - 1)
+              : (currentPage > 0 ? currentPage - 1 : 0);
+            scrollToPage(targetPage);
+          }
+          break;
+        case 'Home':
+          if (viewMode === 'page' || viewMode === 'dual-page') {
+            setCurrentPage(0);
+          } else if (viewMode === 'scroll') {
+            scrollToPage(0);
+          }
+          break;
+        case 'End':
+          if (viewMode === 'page' || viewMode === 'dual-page') {
+            setCurrentPage(images.length - 1);
+          } else if (viewMode === 'scroll') {
+            scrollToPage(images.length - 1);
+          }
+          break;
+        case 'f':
+          toggleFullscreen();
+          break;
+        case 'Escape':
+          if (isFullscreen) {
+            exitFullscreen();
+          }
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [currentPage, images, isFullscreen, viewMode, pageDirection, dualPageLayout, goToNextPage, goToPreviousPage]);
 
   const goToPage = (pageNumber: number) => {
     if (images && pageNumber >= 0 && pageNumber < images.length) {
@@ -387,8 +462,58 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
               )}
             </div>
           </div>
+        ) : viewMode === 'dual-page' ? (
+          // Dual Page Mode
+          <div className="relative w-full h-full flex flex-col items-center justify-center overflow-y-auto">
+            {images && images.length > 0 ? (
+              <>
+                <div className="flex items-center justify-center h-full gap-2">
+                  {getDualPageIndices(currentPage).map((pageIndex, displayIndex) => {
+                    const isRightToLeft = pageDirection === 'rtl';
+                    const isFirstPage = displayIndex === 0;
+                    const isSecondPage = displayIndex === 1;
+                    
+                    // For RTL, swap display order
+                    const shouldShowOnLeft = isRightToLeft ? isSecondPage : isFirstPage;
+                    const shouldShowOnRight = isRightToLeft ? isFirstPage : isSecondPage;
+                    
+                    return (
+                      <div 
+                        key={pageIndex}
+                        className={`flex-1 flex justify-center items-center max-w-[50%] ${
+                          shouldShowOnLeft ? 'order-1' : shouldShowOnRight ? 'order-2' : ''
+                        }`}
+                      >
+                        <img
+                          src={getImageUrl(pageIndex)}
+                          alt={`Page ${pageIndex + 1}`}
+                          className={getFitModeClass()}
+                          loading="eager"
+                          onClick={resetControlsTimer}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* Navigation Areas - respect page direction */}
+                <div 
+                  className="absolute left-0 top-0 w-1/3 h-full cursor-pointer z-10"
+                  onClick={pageDirection === 'ltr' ? goToPreviousPage : goToNextPage}
+                />
+                <div 
+                  className="absolute right-0 top-0 w-1/3 h-full cursor-pointer z-10"
+                  onClick={pageDirection === 'ltr' ? goToNextPage : goToPreviousPage}
+                />
+              </>
+            ) : (
+              <div className="text-white text-center py-8">
+                <p>No images found in this bundle</p>
+              </div>
+            )}
+          </div>
         ) : (
-          // Page Mode
+          // Single Page Mode
           <div className="relative w-full h-full flex flex-col items-center overflow-y-auto">
             {images && images.length > 0 ? (
               <>
@@ -431,7 +556,8 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
                 className="bg-gray-700 text-white px-2 py-1 rounded text-sm"
               >
                 <option value="scroll">Scroll</option>
-                <option value="page">Page</option>
+                <option value="page">Single Page</option>
+                <option value="dual-page">Dual Page</option>
               </select>
             </div>
             
@@ -460,9 +586,23 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
                 <option value="rtl">Right to Left</option>
               </select>
             </div>
+            
+            {viewMode === 'dual-page' && (
+              <div className="flex items-center space-x-2">
+                <span className="text-sm">Layout:</span>
+                <select 
+                  value={dualPageLayout} 
+                  onChange={(e) => setDualPageLayout(e.target.value as DualPageLayout)}
+                  className="bg-gray-700 text-white px-2 py-1 rounded text-sm"
+                >
+                  <option value="standard">Standard (0,1), (2,3)</option>
+                  <option value="offset">Offset (0), (1,2), (3,4)</option>
+                </select>
+              </div>
+            )}
           </div>
           
-          {viewMode === 'page' && (
+          {(viewMode === 'page' || viewMode === 'dual-page') && (
             <div className="flex items-center space-x-4">
               <button
                 onClick={goToPreviousPage}

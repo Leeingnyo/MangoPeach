@@ -4,20 +4,23 @@
 
 import { useState } from 'react';
 
-export type ViewMode = 'scroll' | 'page';
+export type ViewMode = 'scroll' | 'page' | 'dual-page';
 export type FitMode = 'fit-width' | 'fit-height' | 'fit-both' | 'original';
 export type PageDirection = 'ltr' | 'rtl'; // left-to-right, right-to-left
+export type DualPageLayout = 'standard' | 'offset'; // (0,1),(2,3) vs (0),(1,2),(3,4)
 
 export interface ReaderConfig {
   viewMode: ViewMode;
   fitMode: FitMode;
   pageDirection: PageDirection;
+  dualPageLayout: DualPageLayout;
 }
 
 const DEFAULT_CONFIG: ReaderConfig = {
   viewMode: 'scroll',
   fitMode: 'fit-width',
   pageDirection: 'ltr',
+  dualPageLayout: 'standard',
 };
 
 const STORAGE_KEY = 'mangopeach-reader-config';
@@ -39,6 +42,7 @@ export function loadReaderConfig(): ReaderConfig {
       viewMode: isValidViewMode(parsed.viewMode) ? parsed.viewMode : DEFAULT_CONFIG.viewMode,
       fitMode: isValidFitMode(parsed.fitMode) ? parsed.fitMode : DEFAULT_CONFIG.fitMode,
       pageDirection: isValidPageDirection(parsed.pageDirection) ? parsed.pageDirection : DEFAULT_CONFIG.pageDirection,
+      dualPageLayout: isValidDualPageLayout(parsed.dualPageLayout) ? parsed.dualPageLayout : DEFAULT_CONFIG.dualPageLayout,
     };
   } catch (error) {
     console.warn('Failed to load reader config from localStorage:', error);
@@ -81,7 +85,7 @@ export function resetReaderConfig(): ReaderConfig {
 
 // Validation functions
 function isValidViewMode(value: any): value is ViewMode {
-  return value === 'scroll' || value === 'page';
+  return value === 'scroll' || value === 'page' || value === 'dual-page';
 }
 
 function isValidFitMode(value: any): value is FitMode {
@@ -90,6 +94,10 @@ function isValidFitMode(value: any): value is FitMode {
 
 function isValidPageDirection(value: any): value is PageDirection {
   return value === 'ltr' || value === 'rtl';
+}
+
+function isValidDualPageLayout(value: any): value is DualPageLayout {
+  return value === 'standard' || value === 'offset';
 }
 
 /**
@@ -119,5 +127,6 @@ export function useReaderConfig() {
     setViewMode: (mode: ViewMode) => updateConfig('viewMode', mode),
     setFitMode: (mode: FitMode) => updateConfig('fitMode', mode),
     setPageDirection: (direction: PageDirection) => updateConfig('pageDirection', direction),
+    setDualPageLayout: (layout: DualPageLayout) => updateConfig('dualPageLayout', layout),
   };
 }
