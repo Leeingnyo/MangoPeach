@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useReaderConfig, type ViewMode, type FitMode, type PageDirection } from '@/lib/readerConfig';
 
 interface Bundle {
   id: string;
@@ -28,15 +29,16 @@ interface BundleViewerProps {
   bundleDetails?: BundleDetails;
 }
 
-type ViewMode = 'scroll' | 'page';
-type FitMode = 'fit-width' | 'fit-height' | 'fit-both' | 'original';
+// Types now imported from readerConfig
 
 export default function BundleViewer({ libraryId, bundleId, bundleDetails }: BundleViewerProps) {
   const router = useRouter();
   const { bundle, images = [] } = bundleDetails || {};
   
-  const [viewMode, setViewMode] = useState<ViewMode>('scroll');
-  const [fitMode, setFitMode] = useState<FitMode>('fit-width');
+  // Reader configuration with localStorage persistence
+  const { config, setViewMode, setFitMode, setPageDirection } = useReaderConfig();
+  const { viewMode, fitMode, pageDirection } = config;
+  
   const [currentPage, setCurrentPage] = useState(0);
   const [showControls, setShowControls] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -90,20 +92,36 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
       switch (e.key) {
         case 'ArrowLeft':
         case 'a':
-          if (viewMode === 'page' && currentPage > 0) {
-            setCurrentPage(currentPage - 1);
+          // Respect page direction: LTR = left goes back, RTL = left goes forward
+          const goBack = pageDirection === 'ltr';
+          if (viewMode === 'page') {
+            if (goBack && currentPage > 0) {
+              setCurrentPage(currentPage - 1);
+            } else if (!goBack && currentPage < images.length - 1) {
+              setCurrentPage(currentPage + 1);
+            }
           } else if (viewMode === 'scroll') {
-            // Scroll to current page in scroll mode
-            scrollToPage(currentPage > 0 ? currentPage - 1 : 0);
+            const targetPage = goBack 
+              ? (currentPage > 0 ? currentPage - 1 : 0)
+              : (currentPage < images.length - 1 ? currentPage + 1 : images.length - 1);
+            scrollToPage(targetPage);
           }
           break;
         case 'ArrowRight':
         case 'd':
-          if (viewMode === 'page' && currentPage < images.length - 1) {
-            setCurrentPage(currentPage + 1);
+          // Respect page direction: LTR = right goes forward, RTL = right goes back
+          const goForward = pageDirection === 'ltr';
+          if (viewMode === 'page') {
+            if (goForward && currentPage < images.length - 1) {
+              setCurrentPage(currentPage + 1);
+            } else if (!goForward && currentPage > 0) {
+              setCurrentPage(currentPage - 1);
+            }
           } else if (viewMode === 'scroll') {
-            // Scroll to current page in scroll mode
-            scrollToPage(currentPage < images.length - 1 ? currentPage + 1 : images.length - 1);
+            const targetPage = goForward 
+              ? (currentPage < images.length - 1 ? currentPage + 1 : images.length - 1)
+              : (currentPage > 0 ? currentPage - 1 : 0);
+            scrollToPage(targetPage);
           }
           break;
         case 'Home':
@@ -133,7 +151,7 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentPage, images, isFullscreen, viewMode]);
+  }, [currentPage, images, isFullscreen, viewMode, pageDirection]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -382,14 +400,14 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
                   onClick={resetControlsTimer}
                 />
                 
-                {/* Navigation Areas */}
+                {/* Navigation Areas - respect page direction */}
                 <div 
                   className="absolute left-0 top-0 w-1/3 h-full cursor-pointer z-10"
-                  onClick={goToPreviousPage}
+                  onClick={pageDirection === 'ltr' ? goToPreviousPage : goToNextPage}
                 />
                 <div 
                   className="absolute right-0 top-0 w-1/3 h-full cursor-pointer z-10"
-                  onClick={goToNextPage}
+                  onClick={pageDirection === 'ltr' ? goToNextPage : goToPreviousPage}
                 />
               </>
             ) : (
@@ -428,6 +446,18 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
                 <option value="fit-height">Fit Height</option>
                 <option value="fit-both">Fit Both</option>
                 <option value="original">Original</option>
+              </select>
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <span className="text-sm">Direction:</span>
+              <select 
+                value={pageDirection} 
+                onChange={(e) => setPageDirection(e.target.value as PageDirection)}
+                className="bg-gray-700 text-white px-2 py-1 rounded text-sm"
+              >
+                <option value="ltr">Left to Right</option>
+                <option value="rtl">Right to Left</option>
               </select>
             </div>
           </div>
