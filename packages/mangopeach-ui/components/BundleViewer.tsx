@@ -371,7 +371,7 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
           </div>
         ) : (
           // Page Mode
-          <div className="relative w-full h-full flex items-center justify-center">
+          <div className="relative w-full h-full flex flex-col items-center overflow-y-auto">
             {images && images.length > 0 ? (
               <>
                 <img
