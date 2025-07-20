@@ -2,7 +2,7 @@
  * Reader configuration management with localStorage persistence
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export type ViewMode = 'scroll' | 'page' | 'dual-page';
 export type FitMode = 'fit-width' | 'fit-height' | 'fit-both' | 'original';
@@ -29,6 +29,11 @@ const STORAGE_KEY = 'mangopeach-reader-config';
  * Load reader configuration from localStorage
  */
 export function loadReaderConfig(): ReaderConfig {
+  // Return defaults during SSR (when localStorage is not available)
+  if (typeof window === 'undefined') {
+    return { ...DEFAULT_CONFIG };
+  }
+
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) {
@@ -54,6 +59,11 @@ export function loadReaderConfig(): ReaderConfig {
  * Save reader configuration to localStorage
  */
 export function saveReaderConfig(config: ReaderConfig): void {
+  // Skip saving during SSR (when localStorage is not available)
+  if (typeof window === 'undefined') {
+    return;
+  }
+
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
   } catch (error) {
@@ -104,7 +114,15 @@ function isValidDualPageLayout(value: any): value is DualPageLayout {
  * React hook for managing reader configuration
  */
 export function useReaderConfig() {
-  const [config, setConfigState] = useState<ReaderConfig>(loadReaderConfig);
+  const [config, setConfigState] = useState<ReaderConfig>(() => {
+    // Always return defaults during initial render to avoid hydration mismatch
+    return { ...DEFAULT_CONFIG };
+  });
+
+  // Load from localStorage after component mounts (client-side only)
+  useEffect(() => {
+    setConfigState(loadReaderConfig());
+  }, []);
 
   const updateConfig = <K extends keyof ReaderConfig>(
     field: K,
