@@ -53,26 +53,6 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
   // Virtual scrolling settings
   const BUFFER_SIZE = 5; // Load 5 images before and after current view
 
-  // Auto-hide controls after 3 seconds of inactivity
-  useEffect(() => {
-    const resetControlsTimer = () => {
-      setShowControls(true);
-      if (controlsTimeoutRef.current) {
-        clearTimeout(controlsTimeoutRef.current);
-      }
-      controlsTimeoutRef.current = setTimeout(() => {
-        setShowControls(false);
-      }, 3000);
-    };
-
-    resetControlsTimer();
-    return () => {
-      if (controlsTimeoutRef.current) {
-        clearTimeout(controlsTimeoutRef.current);
-      }
-    };
-  }, [currentPage, viewMode, fitMode, pageDirection, dualPageLayout]);
-
   const resetControlsTimer = () => {
     setShowControls(true);
     if (controlsTimeoutRef.current) {
@@ -241,8 +221,6 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
     if (!images || images.length === 0) return;
 
     const handleKeyPress = (e: KeyboardEvent) => {
-      resetControlsTimer(); // Show controls on keyboard interaction
-      
       switch (e.key) {
         case 'ArrowLeft':
         case 'a':
@@ -354,16 +332,6 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
       setLoadedImages(newLoadedImages);
     }
   }, [currentPage, images]);
-
-  // Initialize with first page loaded
-  /*
-  useEffect(() => {
-    if (images && images.length > 0) {
-      const initialLoadedImages = getImagesToLoad(0, images.length);
-      setLoadedImages(initialLoadedImages);
-    }
-  }, [images]);
-  */
 
   // Intersection Observer to track current page in scroll mode
   useEffect(() => {
