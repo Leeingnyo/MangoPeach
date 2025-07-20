@@ -116,6 +116,37 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
     }
   };
 
+  const getDualPageContainerClass = () => {
+    switch (fitMode) {
+      case 'fit-width':
+        return 'w-full h-auto';
+      case 'fit-height':
+        return 'h-full w-auto';
+      case 'fit-both':
+        return 'max-w-full max-h-full';
+      case 'original':
+        return 'w-auto h-auto';
+      default:
+        return 'w-full h-auto max-h-full';
+    }
+  };
+
+  const getDualPageItemClass = () => {
+    switch (fitMode) {
+      case 'fit-width':
+        return 'w-full';
+      case 'fit-height':
+        return 'h-full object-contain';
+      case 'fit-both':
+        return 'max-w-full max-h-full object-contain';
+      case 'original':
+        return 'w-auto h-auto';
+      default:
+        return 'w-full h-auto max-h-full';
+    }
+  };
+
+
   const getImageUrl = (pageIndex: number) => {
     return api.images.urlByIndex(libraryId, bundleId, pageIndex);
   };
@@ -464,10 +495,10 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
           </div>
         ) : viewMode === 'dual-page' ? (
           // Dual Page Mode
-          <div className="relative w-full h-full flex flex-col items-center justify-center overflow-y-auto">
+          <div className="relative w-full h-full flex flex-col justify-around items-center overflow-y-auto">
             {images && images.length > 0 ? (
               <>
-                <div className="flex items-center justify-center h-full gap-2">
+                <div className={`flex gap-2 ${getDualPageContainerClass()}`}>
                   {getDualPageIndices(currentPage).map((pageIndex, displayIndex) => {
                     const isRightToLeft = pageDirection === 'rtl';
                     const isFirstPage = displayIndex === 0;
@@ -480,14 +511,14 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
                     return (
                       <div 
                         key={pageIndex}
-                        className={`flex-1 flex justify-center items-center max-w-[50%] ${
+                        className={`flex justify-center items-center ${
                           shouldShowOnLeft ? 'order-1' : shouldShowOnRight ? 'order-2' : ''
-                        }`}
+                        } ${getDualPageItemClass()}`}
                       >
                         <img
                           src={getImageUrl(pageIndex)}
                           alt={`Page ${pageIndex + 1}`}
-                          className={getFitModeClass()}
+                          className="max-w-full max-h-full object-contain"
                           loading="eager"
                           onClick={resetControlsTimer}
                         />
@@ -514,7 +545,7 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
           </div>
         ) : (
           // Single Page Mode
-          <div className="relative w-full h-full flex flex-col items-center overflow-y-auto">
+          <div className="relative w-full h-full flex flex-col justify-around items-center overflow-y-auto">
             {images && images.length > 0 ? (
               <>
                 <img
