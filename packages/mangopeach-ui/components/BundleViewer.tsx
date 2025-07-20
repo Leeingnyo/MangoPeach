@@ -247,19 +247,22 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
 
     const observer = new IntersectionObserver(
       (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const pageIndex = parseInt(entry.target.getAttribute('data-page') || '0');
-            if (pageIndex !== currentPage) {
-              setCurrentPage(pageIndex);
-            }
-          }
-        });
+        const intersectedEntries = entries.filter(entry => entry.isIntersecting);
+        if (intersectedEntries.length === 0) return;
+
+        const isEnd = intersectedEntries.at(-1)!.target === (scrollContainerRef.current as HTMLElement).lastElementChild;
+        if (isEnd) {
+          setCurrentPage(images.length - 1);
+          return;
+        }
+        const middle = intersectedEntries[Math.floor((intersectedEntries.length - 1) / 2)];
+        const pageIndex = parseInt(middle.target.getAttribute('data-page') || '0');
+        setCurrentPage(pageIndex);
       },
       {
         root: scrollContainerRef.current,
-        rootMargin: '-20% 0px -20% 0px', // Trigger when image is 20% visible
-        threshold: 0.5,
+        rootMargin: '-40% 0px -60% 0px',
+        // threshold: 0.5,
       }
     );
 
@@ -270,7 +273,7 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
     return () => {
       observer.disconnect();
     };
-  }, [viewMode, images, currentPage]);
+  }, [viewMode, images]);
 
   // Show loading state if bundle data is not available
   if (!bundle) {
