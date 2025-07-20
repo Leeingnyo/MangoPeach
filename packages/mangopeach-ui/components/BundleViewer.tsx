@@ -341,8 +341,9 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
       (entries) => {
         const intersectedEntries = entries.filter(entry => entry.isIntersecting);
         if (intersectedEntries.length === 0) return;
+        if (!scrollContainerRef.current) return;
 
-        const isEnd = intersectedEntries.at(-1)!.target === (scrollContainerRef.current as HTMLElement).lastElementChild;
+        const isEnd = intersectedEntries.at(-1)!.target === scrollContainerRef.current.lastElementChild;
         if (isEnd) {
           setCurrentPage(images.length - 1);
           return;
