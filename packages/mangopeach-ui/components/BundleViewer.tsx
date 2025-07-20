@@ -44,6 +44,7 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
   const [showControls, setShowControls] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [loadedImages, setLoadedImages] = useState<Set<number>>(new Set());
+  const [loadingImages, setLoadingImages] = useState<Set<number>>(new Set());
   const [scrollPending, setScrollPending] = useState(false);
   
   const viewerRef = useRef<HTMLDivElement>(null);
@@ -127,9 +128,9 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
   };
 
 
-  const getImageUrl = (pageIndex: number) => {
+  const getImageUrl = useCallback((pageIndex: number) => {
     return api.images.urlByIndex(libraryId, bundleId, pageIndex);
-  };
+  }, [bundleId, libraryId]);
 
   // Dual page helper functions
   const getDualPageIndices = useCallback((currentPageIndex: number): number[] => {
@@ -325,13 +326,54 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
     return imagesToLoad;
   };
 
-  // Update loaded images when current page changes
+  // Preload images by actually fetching them
+  const preloadImage = useCallback((pageIndex: number): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve();
+      img.onerror = () => reject();
+      img.src = getImageUrl(pageIndex);
+    });
+  }, [getImageUrl]);
+
+  // Update loaded images when current page changes (for all view modes)
   useEffect(() => {
     if (images && images.length > 0) {
-      const newLoadedImages = getImagesToLoad(currentPage, images.length);
-      setLoadedImages(newLoadedImages);
+      let centerPage = currentPage;
+      
+      if (viewMode === 'dual-page') {
+        // For dual page mode, use the current page indices to determine preload center
+        const currentIndices = getDualPageIndices(currentPage);
+        // Use the last page index in the current spread as the center for preloading
+        centerPage = Math.max(...currentIndices);
+      }
+      
+      const newImagesToLoad = getImagesToLoad(centerPage, images.length);
+      console.log(`[${viewMode}] Loading images around page ${centerPage}:`, Array.from(newImagesToLoad));
+      
+      // Start preloading images that aren't already loaded or loading
+      newImagesToLoad.forEach(pageIndex => {
+        if (!loadedImages.has(pageIndex) && !loadingImages.has(pageIndex)) {
+          setLoadingImages(prev => new Set([...Array.from(prev), pageIndex]));
+          preloadImage(pageIndex).then(() => {
+            setLoadedImages(prev => new Set([...Array.from(prev), pageIndex]));
+            setLoadingImages(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(pageIndex);
+              return newSet;
+            });
+          }).catch(error => {
+            console.warn(`Failed to preload image ${pageIndex}:`, error);
+            setLoadingImages(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(pageIndex);
+              return newSet;
+            });
+          });
+        }
+      });
     }
-  }, [currentPage, images]);
+  }, [currentPage, images, viewMode, getDualPageIndices, loadedImages, loadingImages, preloadImage]);
 
   // Intersection Observer to track current page in scroll mode
   useEffect(() => {
@@ -484,17 +526,27 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
                           shouldShowOnLeft ? 'order-1' : shouldShowOnRight ? 'order-2' : ''
                         } ${getDualPageItemClass()}`}
                       >
-                        <img
-                          src={getImageUrl(pageIndex)}
-                          alt={`Page ${pageIndex + 1}`}
-                          className="max-w-full max-h-full object-contain"
-                          loading="eager"
-                          onClick={resetControlsTimer}
-                        />
+                        {loadedImages.has(pageIndex) ? (
+                          <img
+                            src={getImageUrl(pageIndex)}
+                            alt={`Page ${pageIndex + 1}`}
+                            className="max-w-full max-h-full object-contain"
+                            loading="eager"
+                            onClick={resetControlsTimer}
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gray-800 flex items-center justify-center text-white">
+                            <div className="text-center">
+                              <div className="animate-pulse mb-2">📖</div>
+                              <p>Page {pageIndex + 1}</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
                 </div>
+                
                 
                 {/* Navigation Areas - respect page direction */}
                 <div 
@@ -517,13 +569,27 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
           <div className="relative w-full h-full flex flex-col justify-around items-center overflow-y-auto">
             {images && images.length > 0 ? (
               <>
-                <img
-                  src={getImageUrl(currentPage)}
-                  alt={`Page ${currentPage + 1}`}
-                  className={getFitModeClass()}
-                  loading="eager"
-                  onClick={resetControlsTimer}
-                />
+                {(() => {
+                  const isLoaded = loadedImages.has(currentPage);
+                  console.log(`Page ${currentPage} loaded:`, isLoaded, 'loadedImages:', Array.from(loadedImages));
+                  return isLoaded ? (
+                    <img
+                      src={getImageUrl(currentPage)}
+                      alt={`Page ${currentPage + 1}`}
+                      className={getFitModeClass()}
+                      loading="eager"
+                      onClick={resetControlsTimer}
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gray-800 flex items-center justify-center text-white">
+                      <div className="text-center">
+                        <div className="animate-pulse mb-2">📖</div>
+                        <p>Loading Page {currentPage + 1}...</p>
+                      </div>
+                    </div>
+                  );
+                })()}
+                
                 
                 {/* Navigation Areas - respect page direction */}
                 <div 
