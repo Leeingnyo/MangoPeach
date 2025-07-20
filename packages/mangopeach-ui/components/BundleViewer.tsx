@@ -448,6 +448,7 @@ export default function BundleViewer({ libraryId, bundleId, bundleDetails }: Bun
                   min="0"
                   max={Math.max(0, (images?.length || 1) - 1)}
                   value={currentPage}
+                  onKeyDown={e => e.stopPropagation()}
                   onChange={(e) => goToPage(parseInt(e.target.value))}
                   className="w-32"
                 />
